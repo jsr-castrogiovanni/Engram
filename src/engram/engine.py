@@ -32,24 +32,31 @@ class EngramEngine:
         self.storage = storage
         self._detection_queue: asyncio.Queue[str] = asyncio.Queue()
         self._detection_task: asyncio.Task[None] | None = None
+        self._ttl_task: asyncio.Task[None] | None = None
+        self._calibration_task: asyncio.Task[None] | None = None
         self._nli_model: Any = None
         self._nli_threshold_high: float = 0.85
         self._nli_threshold_low: float = 0.50
 
     async def start(self) -> None:
-        """Start the background detection worker."""
+        """Start the background detection worker and periodic tasks."""
         self._detection_task = asyncio.create_task(self._detection_worker())
+        self._ttl_task = asyncio.create_task(self._ttl_expiry_loop())
+        self._calibration_task = asyncio.create_task(self._calibration_loop())
         logger.info("Detection worker started")
 
     async def stop(self) -> None:
-        """Stop the background detection worker."""
-        if self._detection_task:
-            self._detection_task.cancel()
-            try:
-                await self._detection_task
-            except asyncio.CancelledError:
-                pass
-            self._detection_task = None
+        """Stop all background tasks."""
+        for task in (self._detection_task, self._ttl_task, self._calibration_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._detection_task = None
+        self._ttl_task = None
+        self._calibration_task = None
 
     # ── engram_commit ────────────────────────────────────────────────
 
@@ -600,6 +607,51 @@ class EngramEngine:
                 logger.warning("NLI model not available. Tier 1 detection disabled.")
                 return None
         return self._nli_model
+
+    # ── Periodic TTL expiry ──────────────────────────────────────────
+
+    async def _ttl_expiry_loop(self) -> None:
+        """Periodically expire TTL facts (every 60 seconds)."""
+        while True:
+            try:
+                await asyncio.sleep(60)
+                expired = await self.storage.expire_ttl_facts()
+                if expired:
+                    logger.info("TTL expiry: closed %d fact(s)", expired)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("TTL expiry loop error")
+
+    # ── NLI threshold calibration ────────────────────────────────────
+
+    async def _calibration_loop(self) -> None:
+        """Periodically recalibrate NLI threshold from detection feedback.
+
+        After 100 feedback events, adjust:
+          threshold = threshold - 0.05 * (false_positive_rate - 0.1)
+        """
+        while True:
+            try:
+                await asyncio.sleep(300)  # every 5 minutes
+                stats = await self.storage.get_detection_feedback_stats()
+                tp = stats.get("true_positive", 0)
+                fp = stats.get("false_positive", 0)
+                total = tp + fp
+                if total >= 100:
+                    fp_rate = fp / total
+                    adjustment = 0.05 * (fp_rate - 0.1)
+                    new_threshold = max(0.5, min(0.95, self._nli_threshold_high - adjustment))
+                    if abs(new_threshold - self._nli_threshold_high) > 0.001:
+                        logger.info(
+                            "NLI calibration: threshold %.3f -> %.3f (fp_rate=%.2f, n=%d)",
+                            self._nli_threshold_high, new_threshold, fp_rate, total,
+                        )
+                        self._nli_threshold_high = new_threshold
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Calibration loop error")
 
 
 def _content_hash(content: str) -> str:

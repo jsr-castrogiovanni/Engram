@@ -1,7 +1,8 @@
-"""Engram MCP Server — four tools, that's the entire surface area.
+"""Engram MCP Server -- four tools, that's the entire surface area.
 
 Supports both stdio (local) and Streamable HTTP (team) transports.
 Tool descriptions embed behavioral guidance for the LLM.
+Integrates auth (Phase 5), rate limiting, and scope permissions.
 """
 
 from __future__ import annotations
@@ -26,14 +27,27 @@ mcp = FastMCP(
     ),
 )
 
-# Engine is initialized at startup via lifespan
+# Engine and storage are initialized at startup via lifespan
 _engine: EngramEngine | None = None
+_storage: Storage | None = None
+_auth_enabled: bool = False
+_rate_limiter: Any = None
 
 
 def get_engine() -> EngramEngine:
     if _engine is None:
         raise RuntimeError("Engram engine not initialized.")
     return _engine
+
+
+def set_auth_enabled(enabled: bool) -> None:
+    global _auth_enabled
+    _auth_enabled = enabled
+
+
+def set_rate_limiter(limiter: Any) -> None:
+    global _rate_limiter
+    _rate_limiter = limiter
 
 
 # ── engram_commit ────────────────────────────────────────────────────
@@ -101,7 +115,26 @@ async def engram_commit(
     Returns: {fact_id, committed_at, duplicate, conflicts_detected}
     """
     engine = get_engine()
-    return await engine.commit(
+
+    # Rate limiting (Phase 5)
+    effective_agent = agent_id or "anonymous"
+    if _rate_limiter is not None:
+        if not _rate_limiter.check(effective_agent):
+            raise ValueError(
+                f"Rate limit exceeded for agent '{effective_agent}'. "
+                f"Max {_rate_limiter.max_per_hour} commits per hour."
+            )
+
+    # Scope permission check (Phase 5)
+    if _storage is not None and agent_id:
+        from engram.auth import check_scope_permission
+        allowed = await check_scope_permission(_storage, agent_id, scope, "write")
+        if not allowed:
+            raise ValueError(
+                f"Agent '{agent_id}' does not have write permission for scope '{scope}'."
+            )
+
+    result = await engine.commit(
         content=content,
         scope=scope,
         confidence=confidence,
@@ -111,6 +144,12 @@ async def engram_commit(
         fact_type=fact_type,
         ttl_days=ttl_days,
     )
+
+    # Record rate limit usage after successful commit
+    if _rate_limiter is not None:
+        _rate_limiter.record(effective_agent)
+
+    return result
 
 
 # ── engram_query ─────────────────────────────────────────────────────

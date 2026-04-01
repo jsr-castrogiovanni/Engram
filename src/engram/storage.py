@@ -341,6 +341,138 @@ class Storage:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
+    # ── Scope permissions ────────────────────────────────────────────
+
+    async def get_scope_permission(
+        self, agent_id: str, scope: str
+    ) -> dict | None:
+        cursor = await self.db.execute(
+            "SELECT * FROM scope_permissions WHERE agent_id = ? AND scope = ?",
+            (agent_id, scope),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def set_scope_permission(
+        self,
+        agent_id: str,
+        scope: str,
+        can_read: bool = True,
+        can_write: bool = True,
+        valid_from: str | None = None,
+        valid_until: str | None = None,
+    ) -> None:
+        await self.db.execute(
+            """INSERT INTO scope_permissions(agent_id, scope, can_read, can_write, valid_from, valid_until)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(agent_id, scope) DO UPDATE SET
+                   can_read = ?, can_write = ?, valid_from = ?, valid_until = ?""",
+            (
+                agent_id, scope, int(can_read), int(can_write), valid_from, valid_until,
+                int(can_read), int(can_write), valid_from, valid_until,
+            ),
+        )
+        await self.db.commit()
+
+    # ── Federation: facts since watermark ─────────────────────────────
+
+    async def get_facts_since(
+        self, after: str, scope_prefix: str | None = None, limit: int = 1000
+    ) -> list[dict]:
+        """Pull facts committed after a watermark timestamp (for federation)."""
+        conditions = ["committed_at > ?"]
+        params: list[Any] = [after]
+        if scope_prefix:
+            conditions.append("(scope = ? OR scope LIKE ? || '/%')")
+            params.extend([scope_prefix, scope_prefix])
+        params.append(limit)
+        where = " AND ".join(conditions)
+        cursor = await self.db.execute(
+            f"SELECT * FROM facts WHERE {where} ORDER BY committed_at ASC LIMIT ?",
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    async def ingest_remote_fact(self, fact: dict[str, Any]) -> bool:
+        """Ingest a fact from a remote Engram instance (federation).
+
+        Returns True if inserted, False if already exists (dedup by id).
+        """
+        existing = await self.get_fact_by_id(fact["id"])
+        if existing:
+            return False
+        await self.insert_fact(fact)
+        return True
+
+    # ── Dashboard query helpers ──────────────────────────────────────
+
+    async def count_facts(self, current_only: bool = True) -> int:
+        cond = "WHERE valid_until IS NULL" if current_only else ""
+        cursor = await self.db.execute(f"SELECT COUNT(*) as cnt FROM facts {cond}")
+        row = await cursor.fetchone()
+        return row["cnt"] if row else 0
+
+    async def count_conflicts(self, status: str = "open") -> int:
+        if status == "all":
+            cursor = await self.db.execute("SELECT COUNT(*) as cnt FROM conflicts")
+        else:
+            cursor = await self.db.execute(
+                "SELECT COUNT(*) as cnt FROM conflicts WHERE status = ?", (status,)
+            )
+        row = await cursor.fetchone()
+        return row["cnt"] if row else 0
+
+    async def get_agents(self) -> list[dict]:
+        cursor = await self.db.execute(
+            "SELECT * FROM agents ORDER BY last_seen DESC"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_expiring_facts(self, days_ahead: int = 7) -> list[dict]:
+        """Get facts with TTL that will expire within days_ahead days."""
+        cursor = await self.db.execute(
+            """SELECT * FROM facts
+               WHERE ttl_days IS NOT NULL
+                 AND valid_until IS NOT NULL
+                 AND valid_until > datetime('now')
+                 AND valid_until < datetime('now', '+' || ? || ' days')
+               ORDER BY valid_until ASC""",
+            (days_ahead,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_fact_timeline(
+        self, scope: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        """Get facts ordered by valid_from for timeline view."""
+        conditions: list[str] = []
+        params: list[Any] = []
+        if scope:
+            conditions.append("(scope = ? OR scope LIKE ? || '/%')")
+            params.extend([scope, scope])
+        where = " AND ".join(conditions) if conditions else "1=1"
+        params.append(limit)
+        cursor = await self.db.execute(
+            f"""SELECT id, lineage_id, content, scope, confidence, fact_type,
+                       agent_id, engineer, committed_at, valid_from, valid_until, ttl_days
+                FROM facts WHERE {where}
+                ORDER BY valid_from DESC LIMIT ?""",
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_detection_feedback_stats(self) -> dict[str, int]:
+        """Get counts of true_positive vs false_positive feedback."""
+        cursor = await self.db.execute(
+            "SELECT feedback, COUNT(*) as cnt FROM detection_feedback GROUP BY feedback"
+        )
+        rows = await cursor.fetchall()
+        return {r["feedback"]: r["cnt"] for r in rows}
+
     # ── Open conflict check for query enrichment ─────────────────────
 
     async def get_open_conflict_fact_ids(self) -> set[str]:
