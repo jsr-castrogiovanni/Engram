@@ -382,7 +382,7 @@ def _render_landing() -> str:
   <script>
     function copyCode(id) {
       const el = document.getElementById(id);
-      const text = el.textContent.replace(/<br>/g, ' && ').trim();
+      const text = el.textContent.trim();
       navigator.clipboard.writeText(text).then(() => {
         const btn = document.querySelector('.copy-btn');
         const originalText = btn.textContent;
