@@ -1,6 +1,7 @@
 """CLI entry point for Engram.
 
 Usage:
+    engram install                  # auto-detect MCP clients and add Engram config
     engram serve                    # stdio (default, for MCP clients)
     engram serve --http             # Streamable HTTP on localhost:7474
     engram serve --http --auth      # team mode with JWT auth
@@ -10,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
 from pathlib import Path
@@ -25,16 +27,132 @@ def main() -> None:
     pass
 
 
+# ── engram install ───────────────────────────────────────────────────
+
+
+# Known MCP client config locations and the JSON path to mcpServers
+_MCP_CLIENTS = {
+    "Claude Code": {
+        "path": Path.home() / ".claude" / "settings.json",
+        "key": "mcpServers",
+    },
+    "Cursor": {
+        "path": Path.home() / ".cursor" / "mcp.json",
+        "key": "mcpServers",
+    },
+    "Windsurf": {
+        "path": Path.home() / ".codeium" / "windsurf" / "mcp_settings.json",
+        "key": "mcpServers",
+    },
+}
+
+_ENGRAM_MCP_ENTRY = {
+    "command": "uvx",
+    "args": ["engram-mcp@latest"],
+}
+
+
+@main.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be changed without writing.")
+def install(dry_run: bool) -> None:
+    """Auto-detect MCP clients and add Engram to their config."""
+    added = []
+    skipped = []
+    not_found = []
+
+    for client_name, info in _MCP_CLIENTS.items():
+        config_path: Path = info["path"]
+        key: str = info["key"]
+
+        if not config_path.exists():
+            not_found.append(client_name)
+            continue
+
+        try:
+            data = json.loads(config_path.read_text())
+        except Exception:
+            data = {}
+
+        servers = data.setdefault(key, {})
+
+        if "engram" in servers:
+            skipped.append(client_name)
+            continue
+
+        servers["engram"] = _ENGRAM_MCP_ENTRY
+
+        if not dry_run:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(json.dumps(data, indent=2))
+
+        added.append(client_name)
+
+    # Also try Claude Code CLI if available
+    _try_claude_code_cli(dry_run, added, skipped)
+
+    if added:
+        click.echo(f"Engram added to: {', '.join(added)}")
+    if skipped:
+        click.echo(f"Already configured: {', '.join(skipped)}")
+    if not_found:
+        click.echo(f"Not installed (skipped): {', '.join(not_found)}")
+
+    if added:
+        click.echo("\nRestart your editor and start a new chat — your agent will do the rest.")
+    elif not added and not skipped:
+        click.echo(
+            "\nNo MCP clients detected. Add Engram manually:\n\n"
+            '  {"mcpServers": {"engram": {"command": "uvx", "args": ["engram-mcp@latest"]}}}'
+        )
+
+
+def _try_claude_code_cli(dry_run: bool, added: list, skipped: list) -> None:
+    """Try adding via 'claude mcp add' CLI if claude is available."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("claude"):
+        return
+    # Check if already added via settings.json (avoid double-add)
+    settings = Path.home() / ".claude" / "settings.json"
+    if settings.exists():
+        try:
+            data = json.loads(settings.read_text())
+            if "engram" in data.get("mcpServers", {}):
+                return  # already handled above
+        except Exception:
+            pass
+
+    if dry_run:
+        click.echo("[dry-run] Would run: claude mcp add engram --command uvx -- engram-mcp@latest")
+        return
+
+    try:
+        result = subprocess.run(
+            ["claude", "mcp", "add", "engram", "--command", "uvx", "--", "engram-mcp@latest"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            added.append("Claude Code (via CLI)")
+        elif "already" in result.stdout.lower() or "already" in result.stderr.lower():
+            skipped.append("Claude Code (via CLI)")
+    except Exception:
+        pass
+
+
+# ── engram serve ─────────────────────────────────────────────────────
+
+
 @main.command()
 @click.option("--http", is_flag=True, help="Streamable HTTP transport.")
 @click.option("--host", default="127.0.0.1", help="Host to bind.")
 @click.option("--port", default=7474, type=int, help="Port to bind.")
-@click.option("--db", default=str(DEFAULT_DB_PATH), help="SQLite path.")
+@click.option("--db", default=None, help="SQLite path (local mode only).")
 @click.option("--log-level", default="INFO", help="Logging level.")
-@click.option("--auth", is_flag=True, help="Enable JWT auth (team mode).")
+@click.option("--auth", is_flag=True, help="Enable JWT auth (legacy team mode).")
 @click.option("--rate-limit", default=50, type=int, help="Commits/agent/hr.")
 def serve(
-    http: bool, host: str, port: int, db: str, log_level: str,
+    http: bool, host: str, port: int, db: str | None, log_level: str,
     auth: bool, rate_limit: int,
 ) -> None:
     """Start the Engram MCP server."""
@@ -50,19 +168,41 @@ def serve(
     ))
 
 
-
 async def _serve(
-    http: bool, host: str, port: int, db_path: str, logger: logging.Logger,
+    http: bool, host: str, port: int, db_path: str | None, logger: logging.Logger,
     auth_enabled: bool = False, rate_limit: int = 50,
 ) -> None:
+    import os
+
     from engram.engine import EngramEngine
     from engram.server import mcp, set_rate_limiter, set_auth_enabled
     import engram.server as server_module
-    from engram.storage import Storage
 
-    storage = Storage(db_path=db_path)
+    # ── Select storage backend ────────────────────────────────────────
+    db_url = os.environ.get("ENGRAM_DB_URL", "")
+    workspace_id = "local"
+
+    # Try to read workspace.json for db_url and workspace_id
+    try:
+        from engram.workspace import read_workspace
+        ws = read_workspace()
+        if ws and ws.db_url:
+            db_url = ws.db_url
+            workspace_id = ws.engram_id
+    except Exception:
+        pass
+
+    if db_url:
+        from engram.postgres_storage import PostgresStorage
+        storage = PostgresStorage(db_url=db_url, workspace_id=workspace_id)
+        logger.info("Team mode: PostgreSQL (workspace: %s)", workspace_id)
+    else:
+        from engram.storage import SQLiteStorage
+        effective_db = db_path or str(DEFAULT_DB_PATH)
+        storage = SQLiteStorage(db_path=effective_db)
+        logger.info("Local mode: SQLite (%s)", effective_db)
+
     await storage.connect()
-    logger.info("Database: %s", db_path)
 
     engine = EngramEngine(storage)
     server_module._engine = engine
@@ -77,7 +217,6 @@ async def _serve(
         logger.info("Rate limit: %d commits/agent/hour", rate_limit)
 
     await engine.start()
-    logger.info("Detection worker started")
 
     expired = await storage.expire_ttl_facts()
     if expired:
@@ -86,7 +225,6 @@ async def _serve(
     try:
         if http:
             logger.info("Starting Streamable HTTP on %s:%d", host, port)
-            logger.info("Home: http://%s:%d/", host, port)
             logger.info("Dashboard: http://%s:%d/dashboard", host, port)
             from engram.dashboard import build_dashboard_routes
             from engram.federation import build_federation_routes
@@ -110,6 +248,9 @@ async def _serve(
     finally:
         await engine.stop()
         await storage.close()
+
+
+# ── engram token ─────────────────────────────────────────────────────
 
 
 @main.group()

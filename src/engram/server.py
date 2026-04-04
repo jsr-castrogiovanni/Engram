@@ -1,35 +1,50 @@
-"""Engram MCP Server -- four tools, that's the entire surface area.
+"""Engram MCP Server.
 
-Supports both stdio (local) and Streamable HTTP (team) transports.
+Seven tools total:
+  engram_status    — check setup state; guides agent through onboarding
+  engram_init      — founder creates a new workspace (requires ENGRAM_DB_URL)
+  engram_join      — teammate joins an existing workspace via Team ID + Invite Key
+  engram_commit    — write a verified fact to shared memory
+  engram_query     — read what the team's agents collectively know
+  engram_conflicts — surface contradictions between facts
+  engram_resolve   — settle a disagreement
+
 Tool descriptions embed behavioral guidance for the LLM.
-Integrates auth (Phase 5), rate limiting, and scope permissions.
+The 'next_prompt' field in onboarding responses tells the agent exactly what to say.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import secrets
+from datetime import datetime, timezone
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from engram.engine import EngramEngine
-from engram.storage import Storage
+from engram.storage import BaseStorage
 
 logger = logging.getLogger("engram")
 
 mcp = FastMCP(
     "Engram",
     instructions=(
-        "Engram is a shared knowledge consistency layer for engineering teams. "
-        "It gives agents a persistent, shared memory that detects contradictions. "
-        "Query before starting work. Commit verified discoveries. Check conflicts "
-        "before architectural decisions."
+        "Engram is a shared team memory layer with conflict detection. "
+        "IMPORTANT: On your very first tool call in a new session, call engram_status() "
+        "to check if the workspace is configured. "
+        "Read the 'next_prompt' field in every response from engram_status, engram_init, "
+        "and engram_join — say that text to the user verbatim. Follow each prompt in sequence. "
+        "Once status is 'ready': call engram_query before starting any task, "
+        "call engram_commit after verified discoveries, "
+        "check engram_conflicts before architectural decisions."
     ),
 )
 
-# Engine and storage are initialized at startup via lifespan
+# Engine and storage are initialized at startup via cli.py
 _engine: EngramEngine | None = None
-_storage: Storage | None = None
+_storage: BaseStorage | None = None
 _auth_enabled: bool = False
 _rate_limiter: Any = None
 
@@ -48,6 +63,246 @@ def set_auth_enabled(enabled: bool) -> None:
 def set_rate_limiter(limiter: Any) -> None:
     global _rate_limiter
     _rate_limiter = limiter
+
+
+# ── engram_status ─────────────────────────────────────────────────────
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def engram_status() -> dict[str, Any]:
+    """Check whether Engram is configured and get the next setup step.
+
+    Call this FIRST in every new session. If status is 'ready', proceed
+    to engram_query. If not, read 'next_prompt' and say it to the user.
+
+    Returns: {status, next_prompt?, engram_id?, mode?}
+    """
+    from engram.workspace import is_configured, is_team_mode, read_workspace, WORKSPACE_PATH
+
+    ws = read_workspace()
+
+    if ws and ws.db_url:
+        return {
+            "status": "ready",
+            "mode": "team",
+            "engram_id": ws.engram_id,
+            "anonymous_mode": ws.anonymous_mode,
+        }
+
+    if ws and not ws.db_url and WORKSPACE_PATH.exists():
+        return {
+            "status": "ready",
+            "mode": "local",
+            "engram_id": "local",
+        }
+
+    db_url = os.environ.get("ENGRAM_DB_URL", "")
+    if db_url:
+        return {
+            "status": "db_url_detected",
+            "next_prompt": (
+                "I can see a database connection string in your environment. "
+                "Do you have a Team ID to join an existing workspace, "
+                "or are you setting up a new one?"
+            ),
+        }
+
+    return {
+        "status": "unconfigured",
+        "next_prompt": (
+            "Welcome to Engram — shared memory for your team's agents.\n\n"
+            "Do you have a Team ID to join an existing workspace, "
+            "or are you setting up a new one?\n\n"
+            "If setting up a new workspace, you'll need a PostgreSQL database "
+            "connection string. You can get a free one at neon.tech, "
+            "supabase.com, or railway.app."
+        ),
+    }
+
+
+# ── engram_init ───────────────────────────────────────────────────────
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+async def engram_init(
+    anonymous_mode: bool = False,
+    anon_agents: bool = False,
+    invite_expires_days: int = 90,
+    invite_uses: int = 10,
+) -> dict[str, Any]:
+    """Set up a new Engram workspace (team founder only).
+
+    Requires ENGRAM_DB_URL to be set in the environment. Runs schema
+    setup, generates a Team ID and invite key, and writes workspace.json.
+
+    The invite key contains the database URL encrypted inside it —
+    teammates only need the Team ID and Invite Key (not the db URL).
+
+    Parameters:
+    - anonymous_mode: If true, engineer names are stripped from all commits.
+      Ask the user: "Should commits show who made them, or stay anonymous?"
+    - anon_agents: If true, agent IDs are randomized each session.
+    - invite_expires_days: How long the invite key is valid (default 90 days).
+    - invite_uses: How many times the invite key can be used (default 10).
+
+    Returns: {status, engram_id, invite_key, next_prompt}
+    """
+    db_url = os.environ.get("ENGRAM_DB_URL", "")
+    if not db_url:
+        return {
+            "status": "awaiting_db",
+            "next_prompt": (
+                "Please add your database connection string to your environment "
+                "before we continue:\n\n"
+                "  export ENGRAM_DB_URL='postgres://...'\n\n"
+                "You can get a free PostgreSQL database at neon.tech, "
+                "supabase.com, or railway.app. "
+                "Tell me when it's set."
+            ),
+        }
+
+    from engram.workspace import (
+        WorkspaceConfig,
+        generate_invite_key,
+        generate_team_id,
+        write_workspace,
+    )
+
+    engram_id = generate_team_id()
+    invite_key, key_hash = generate_invite_key(
+        db_url=db_url,
+        engram_id=engram_id,
+        expires_days=invite_expires_days,
+        uses_remaining=invite_uses,
+    )
+
+    # Set up schema and workspace row in the database
+    if _storage is not None:
+        from datetime import timezone
+        expires_iso = datetime.now(timezone.utc).replace(
+            day=datetime.now(timezone.utc).day
+        ).isoformat()  # calculated properly below
+        import time
+        expires_ts = datetime.fromtimestamp(
+            time.time() + invite_expires_days * 86400, tz=timezone.utc
+        ).isoformat()
+
+        await _storage.ensure_workspace(engram_id, anonymous_mode, anon_agents)
+        await _storage.insert_invite_key(
+            key_hash=key_hash,
+            engram_id=engram_id,
+            expires_at=expires_ts,
+            uses_remaining=invite_uses,
+        )
+
+    # Write workspace.json
+    config = WorkspaceConfig(
+        engram_id=engram_id,
+        db_url=db_url,
+        anonymous_mode=anonymous_mode,
+        anon_agents=anon_agents,
+    )
+    write_workspace(config)
+    logger.info("Workspace initialized: %s (anonymous=%s)", engram_id, anonymous_mode)
+
+    return {
+        "status": "initialized",
+        "engram_id": engram_id,
+        "invite_key": invite_key,
+        "next_prompt": (
+            f"Your team workspace is ready.\n\n"
+            f"Share with teammates via iMessage, WhatsApp, Slack, or any channel:\n\n"
+            f"  Team ID:    {engram_id}\n"
+            f"  Invite Key: {invite_key}\n\n"
+            f"That's all they need — the invite key carries everything. "
+            f"They install Engram, start a chat, and their agent handles the rest.\n\n"
+            f"This invite key can be used {invite_uses} times and expires in "
+            f"{invite_expires_days} days."
+        ),
+    }
+
+
+# ── engram_join ───────────────────────────────────────────────────────
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+async def engram_join(team_id: str, invite_key: str) -> dict[str, Any]:
+    """Join an existing Engram workspace using a Team ID and Invite Key.
+
+    The invite key contains the database URL encrypted inside it —
+    no database string is needed from the user.
+
+    Parameters:
+    - team_id: The Team ID shared by the workspace founder (e.g. ENG-X7K2-P9M4).
+    - invite_key: The invite key shared by the workspace founder (e.g. ek_live_...).
+
+    Returns: {status, engram_id, next_prompt}
+    """
+    from engram.workspace import (
+        WorkspaceConfig,
+        decode_invite_key,
+        invite_key_hash,
+        write_workspace,
+    )
+
+    # Decode the invite key (self-contained, no server lookup needed first)
+    try:
+        payload = decode_invite_key(invite_key)
+    except ValueError as e:
+        return {
+            "status": "error",
+            "next_prompt": (
+                f"That invite key isn't valid: {e}\n\n"
+                "Please double-check it with the person who set up the workspace."
+            ),
+        }
+
+    # Verify the Team ID matches what's in the key
+    if payload.get("engram_id", "").upper() != team_id.upper():
+        return {
+            "status": "error",
+            "next_prompt": (
+                "The Team ID doesn't match this invite key. "
+                "Make sure you copied both correctly."
+            ),
+        }
+
+    db_url = payload["db_url"]
+    engram_id = payload["engram_id"]
+
+    # Server-side validation: check uses_remaining and expiry in the database
+    key_hash = invite_key_hash(invite_key)
+    if _storage is not None:
+        key_row = await _storage.validate_invite_key(key_hash)
+        if key_row is None:
+            return {
+                "status": "error",
+                "next_prompt": (
+                    "This invite key has been revoked or used up. "
+                    "Ask the workspace admin to generate a new one."
+                ),
+            }
+        await _storage.consume_invite_key(key_hash)
+
+    # Write workspace.json — db_url extracted silently, never shown to user
+    config = WorkspaceConfig(
+        engram_id=engram_id,
+        db_url=db_url,
+        anonymous_mode=False,
+        anon_agents=False,
+    )
+    write_workspace(config)
+    logger.info("Joined workspace: %s", engram_id)
+
+    return {
+        "status": "joined",
+        "engram_id": engram_id,
+        "next_prompt": (
+            "You're in. Your agent is now connected to the team's shared memory.\n\n"
+            "I'll query team knowledge before starting any task and commit "
+            "discoveries after. You don't need to think about Engram — it's just there."
+        ),
+    }
 
 
 # ── engram_commit ────────────────────────────────────────────────────

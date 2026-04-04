@@ -16,7 +16,7 @@ from typing import Any
 import aiohttp
 
 from engram.engine import EngramEngine
-from engram.storage import Storage
+from engram.storage import BaseStorage as Storage
 
 logger = logging.getLogger("engram")
 

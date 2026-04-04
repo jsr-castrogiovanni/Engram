@@ -20,7 +20,7 @@ import numpy as np
 from engram import embeddings
 from engram.entities import extract_entities, extract_keywords
 from engram.secrets import scan_for_secrets
-from engram.storage import Storage
+from engram.storage import BaseStorage
 
 logger = logging.getLogger("engram")
 
@@ -28,7 +28,7 @@ logger = logging.getLogger("engram")
 class EngramEngine:
     """Core engine coordinating commit, query, detection, and resolution."""
 
-    def __init__(self, storage: Storage) -> None:
+    def __init__(self, storage: BaseStorage) -> None:
         self.storage = storage
         self._detection_queue: asyncio.Queue[str] = asyncio.Queue()
         self._suggestion_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -140,6 +140,18 @@ class EngramEngine:
             raise ValueError("Confidence must be between 0.0 and 1.0.")
         if fact_type not in ("observation", "inference", "decision"):
             raise ValueError("fact_type must be 'observation', 'inference', or 'decision'.")
+
+        # Step 1b: Privacy enforcement — strip engineer/agent_id if workspace requires it
+        try:
+            from engram.workspace import read_workspace
+            ws = read_workspace()
+            if ws:
+                if ws.anonymous_mode:
+                    engineer = None
+                if ws.anon_agents and agent_id:
+                    agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        except Exception:
+            pass  # workspace module not available — no enforcement needed
 
         # Step 2: Secret scan (<1ms)
         secret_match = scan_for_secrets(content)

@@ -1,12 +1,15 @@
-"""Phase 1 — Storage layer: async SQLite with WAL mode.
+"""Storage layer: async SQLite (local mode) + abstract BaseStorage interface.
 
-Write lock is held only for INSERT (~1ms). Detection runs in a
-background worker without holding any lock.
+Local mode: SQLiteStorage — aiosqlite, WAL mode, FTS5.
+Team mode:  PostgresStorage (postgres_storage.py) — asyncpg, tsvector, pgvector.
+
+The Storage alias keeps existing imports working.
 """
 
 from __future__ import annotations
 
 import json
+from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,7 +21,208 @@ from engram.schema import SCHEMA_SQL, SCHEMA_VERSION
 DEFAULT_DB_PATH = Path.home() / ".engram" / "knowledge.db"
 
 
-class Storage:
+class BaseStorage(ABC):
+    """Abstract storage interface. Both SQLiteStorage and PostgresStorage implement this."""
+
+    @abstractmethod
+    async def connect(self) -> None: ...
+
+    @abstractmethod
+    async def close(self) -> None: ...
+
+    @abstractmethod
+    async def insert_fact(self, fact: dict[str, Any]) -> int: ...
+
+    @abstractmethod
+    async def find_duplicate(self, content_hash: str, scope: str) -> str | None: ...
+
+    @abstractmethod
+    async def close_validity_window(
+        self, *, lineage_id: str | None = None, fact_id: str | None = None
+    ) -> None: ...
+
+    @abstractmethod
+    async def expire_ttl_facts(self) -> int: ...
+
+    @abstractmethod
+    async def get_current_facts_in_scope(
+        self,
+        scope: str | None = None,
+        fact_type: str | None = None,
+        as_of: str | None = None,
+        limit: int = 200,
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    async def fts_search(self, query: str, limit: int = 20) -> list[int]: ...
+
+    @abstractmethod
+    async def get_facts_by_rowids(self, rowids: list[int]) -> list[dict]: ...
+
+    @abstractmethod
+    async def get_fact_by_id(self, fact_id: str) -> dict | None: ...
+
+    @abstractmethod
+    async def find_entity_conflicts(
+        self, entity_name: str, entity_type: str, entity_value: str, scope: str, exclude_id: str
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    async def find_cross_scope_entity_matches(
+        self, entity_name: str, entity_type: str, entity_value: str, exclude_id: str
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    async def insert_conflict(self, conflict: dict[str, Any]) -> None: ...
+
+    @abstractmethod
+    async def conflict_exists(self, fact_a_id: str, fact_b_id: str) -> bool: ...
+
+    @abstractmethod
+    async def get_conflicts(
+        self, scope: str | None = None, status: str = "open"
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    async def resolve_conflict(
+        self,
+        conflict_id: str,
+        resolution_type: str,
+        resolution: str,
+        resolved_by: str | None = None,
+    ) -> bool: ...
+
+    @abstractmethod
+    async def get_conflict_by_id(self, conflict_id: str) -> dict | None: ...
+
+    @abstractmethod
+    async def get_conflict_with_facts(self, conflict_id: str) -> dict | None: ...
+
+    @abstractmethod
+    async def update_conflict_suggestion(
+        self,
+        conflict_id: str,
+        suggested_resolution: str,
+        suggested_resolution_type: str,
+        suggested_winning_fact_id: str | None,
+        suggestion_reasoning: str,
+        suggestion_generated_at: str,
+    ) -> None: ...
+
+    @abstractmethod
+    async def auto_resolve_conflict(
+        self,
+        conflict_id: str,
+        resolution_type: str,
+        resolution: str,
+        resolved_by: str,
+        escalated_at: str | None = None,
+    ) -> bool: ...
+
+    @abstractmethod
+    async def get_stale_open_conflicts(self, older_than_hours: int = 72) -> list[dict]: ...
+
+    @abstractmethod
+    async def insert_detection_feedback(self, conflict_id: str, feedback: str) -> None: ...
+
+    @abstractmethod
+    async def upsert_agent(self, agent_id: str, engineer: str = "unknown") -> None: ...
+
+    @abstractmethod
+    async def increment_agent_commits(self, agent_id: str) -> None: ...
+
+    @abstractmethod
+    async def increment_agent_flagged(self, agent_id: str) -> None: ...
+
+    @abstractmethod
+    async def get_agent(self, agent_id: str) -> dict | None: ...
+
+    @abstractmethod
+    async def get_scope_permission(self, agent_id: str, scope: str) -> dict | None: ...
+
+    @abstractmethod
+    async def set_scope_permission(
+        self,
+        agent_id: str,
+        scope: str,
+        can_read: bool = True,
+        can_write: bool = True,
+        valid_from: str | None = None,
+        valid_until: str | None = None,
+    ) -> None: ...
+
+    @abstractmethod
+    async def get_facts_by_lineage(self, lineage_id: str) -> list[dict]: ...
+
+    @abstractmethod
+    async def get_active_facts_with_embeddings(
+        self, scope: str, limit: int = 20
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    async def update_fact_embedding(self, fact_id: str, embedding: bytes) -> None: ...
+
+    @abstractmethod
+    async def get_facts_since(
+        self, after: str, scope_prefix: str | None = None, limit: int = 1000
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    async def ingest_remote_fact(self, fact: dict[str, Any]) -> bool: ...
+
+    @abstractmethod
+    async def count_facts(self, current_only: bool = True) -> int: ...
+
+    @abstractmethod
+    async def count_conflicts(self, status: str = "open") -> int: ...
+
+    @abstractmethod
+    async def get_agents(self) -> list[dict]: ...
+
+    @abstractmethod
+    async def get_agents_by_ids(self, agent_ids: set[str]) -> dict[str, dict]: ...
+
+    @abstractmethod
+    async def get_expiring_facts(self, days_ahead: int = 7) -> list[dict]: ...
+
+    @abstractmethod
+    async def get_fact_timeline(
+        self, scope: str | None = None, limit: int = 100
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    async def get_detection_feedback_stats(self) -> dict[str, int]: ...
+
+    @abstractmethod
+    async def get_open_conflict_fact_ids(self) -> set[str]: ...
+
+    # ── Workspace / invite key methods (Phase 0) ─────────────────────
+
+    async def ensure_workspace(self, engram_id: str, anonymous_mode: bool, anon_agents: bool) -> None:
+        """Create workspace row if it doesn't exist. Default no-op for local mode."""
+
+    async def get_workspace(self, engram_id: str) -> dict | None:
+        """Return workspace row or None."""
+        return None
+
+    async def insert_invite_key(
+        self,
+        key_hash: str,
+        engram_id: str,
+        expires_at: str | None,
+        uses_remaining: int | None,
+    ) -> None:
+        """Store an invite key hash. Default no-op for local mode."""
+
+    async def validate_invite_key(self, key_hash: str) -> dict | None:
+        """Return invite key row if valid (not expired, uses remaining). Default None."""
+        return None
+
+    async def consume_invite_key(self, key_hash: str) -> None:
+        """Decrement uses_remaining. Default no-op for local mode."""
+
+
+class SQLiteStorage(BaseStorage):
     """Async SQLite storage with WAL mode and FTS5."""
 
     def __init__(self, db_path: Path | str = DEFAULT_DB_PATH) -> None:
@@ -646,6 +850,65 @@ class Storage:
             ids.add(r["fact_b_id"])
         return ids
 
+    # ── Workspace / invite key methods (Phase 0) ─────────────────────
+
+    async def ensure_workspace(
+        self, engram_id: str, anonymous_mode: bool, anon_agents: bool
+    ) -> None:
+        now = _now_iso()
+        await self.db.execute(
+            """INSERT OR IGNORE INTO workspaces(engram_id, created_at, anonymous_mode, anon_agents)
+               VALUES (?, ?, ?, ?)""",
+            (engram_id, now, int(anonymous_mode), int(anon_agents)),
+        )
+        await self.db.commit()
+
+    async def get_workspace(self, engram_id: str) -> dict | None:
+        cursor = await self.db.execute(
+            "SELECT * FROM workspaces WHERE engram_id = ?", (engram_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def insert_invite_key(
+        self,
+        key_hash: str,
+        engram_id: str,
+        expires_at: str | None,
+        uses_remaining: int | None,
+    ) -> None:
+        now = _now_iso()
+        await self.db.execute(
+            """INSERT OR IGNORE INTO invite_keys(key_hash, engram_id, created_at, expires_at, uses_remaining)
+               VALUES (?, ?, ?, ?, ?)""",
+            (key_hash, engram_id, now, expires_at, uses_remaining),
+        )
+        await self.db.commit()
+
+    async def validate_invite_key(self, key_hash: str) -> dict | None:
+        cursor = await self.db.execute(
+            """SELECT * FROM invite_keys
+               WHERE key_hash = ?
+                 AND (expires_at IS NULL OR expires_at > ?)
+                 AND (uses_remaining IS NULL OR uses_remaining > 0)""",
+            (key_hash, _now_iso()),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def consume_invite_key(self, key_hash: str) -> None:
+        await self.db.execute(
+            """UPDATE invite_keys
+               SET uses_remaining = uses_remaining - 1
+               WHERE key_hash = ? AND uses_remaining IS NOT NULL""",
+            (key_hash,),
+        )
+        await self.db.commit()
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# Backward-compatible alias — existing imports of `Storage` still work
+Storage = SQLiteStorage
