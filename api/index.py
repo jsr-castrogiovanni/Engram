@@ -291,7 +291,9 @@ def _render_landing() -> str:
   <section class="hero">
     <div class="container">
       <div class="badges">
-        <span class="badge green">Status: All phases complete</span>
+        <span class="badge green">Core: Shipped</span>
+        <span class="badge green">Dashboard: Shipped</span>
+        <span class="badge green">Federation: Shipped</span>
         <span class="badge blue">License: Apache 2.0</span>
         <span class="badge purple">MCP Compatible</span>
         <span class="badge">Python 3.11+</span>

@@ -4,7 +4,9 @@
 
 <br />
 
-[![Status](https://img.shields.io/badge/status-all%20phases%20complete-brightgreen?style=flat-square)](https://github.com/Agentscreator/Engram)
+[![Core](https://img.shields.io/badge/core-shipped-brightgreen?style=flat-square)](#) 
+[![Dashboard](https://img.shields.io/badge/dashboard-shipped-brightgreen?style=flat-square)](#) 
+[![Federation](https://img.shields.io/badge/federation-shipped-brightgreen?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](./LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8b5cf6?style=flat-square)](https://modelcontextprotocol.io)
 [![Python](https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square)](https://python.org)
@@ -193,7 +195,7 @@ Engram is grounded in peer-reviewed research on multi-agent memory systems:
 - [Rasmussen et al. (2025)](https://arxiv.org/abs/2501.13956) — Graphiti's bitemporal modeling directly inspired the temporal validity design
 - [Hu et al. (2026)](https://arxiv.org/abs/2512.13564) — survey confirming shared multi-agent memory as an open frontier
 
-Full literature review: [`LITERATURE.md`](./LITERATURE.md) · Implementation plan: [`IMPLEMENTATION.md`](./IMPLEMENTATION.md)
+Full literature review: [`LITERATURE.md`](./LITERATURE.md) · Implementation details: [`docs/IMPLEMENTATION.md`](./docs/IMPLEMENTATION.md)
 
 <br />
 
