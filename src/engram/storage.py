@@ -16,7 +16,7 @@ from typing import Any
 
 import aiosqlite
 
-from engram.schema import SCHEMA_SQL, SCHEMA_VERSION
+from engram.schema import POST_MIGRATION_INDEXES, SCHEMA_SQL, SCHEMA_VERSION
 
 DEFAULT_DB_PATH = Path.home() / ".engram" / "knowledge.db"
 
@@ -264,16 +264,21 @@ class SQLiteStorage(BaseStorage):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(str(self.db_path))
         self._db.row_factory = aiosqlite.Row
-        await self._db.executescript(SCHEMA_SQL)
 
-        # Run pending migrations for existing databases.
-        # New databases have no schema_meta row yet — skip migrations because
-        # SCHEMA_SQL already includes all columns.
-        cursor = await self._db.execute(
-            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
-        )
-        row = await cursor.fetchone()
+        # Check if this is an existing database that needs migrations
+        # BEFORE running the full schema (which references columns that
+        # may not exist yet on old tables).
+        try:
+            cursor = await self._db.execute(
+                "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+            )
+            row = await cursor.fetchone()
+        except Exception:
+            row = None  # Fresh database — schema_meta doesn't exist yet
+
         if row is not None:
+            # Existing database: run migrations first so columns exist
+            # before SCHEMA_SQL tries to create indexes on them.
             from engram.schema import MIGRATIONS
             current_version = int(row["value"])
             for version in range(current_version + 1, SCHEMA_VERSION + 1):
@@ -281,7 +286,17 @@ class SQLiteStorage(BaseStorage):
                     try:
                         await self._db.execute(stmt)
                     except Exception:
-                        pass  # Column already exists — migration is idempotent
+                        pass  # Column/table already exists — idempotent
+            await self._db.commit()
+
+        # Now safe to run full schema: CREATE TABLE IF NOT EXISTS is a
+        # no-op for existing tables, and all columns exist for indexes.
+        await self._db.executescript(SCHEMA_SQL)
+
+        # Create indexes that depend on migration-added columns.
+        # Separated so the main SCHEMA_SQL executescript doesn't fail
+        # mid-way on older databases before migrations have run.
+        await self._db.executescript(POST_MIGRATION_INDEXES)
 
         await self._db.execute(
             "INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)",

@@ -100,8 +100,6 @@ CREATE INDEX IF NOT EXISTS idx_facts_content_hash ON facts(content_hash);
 CREATE INDEX IF NOT EXISTS idx_facts_lineage      ON facts(lineage_id);
 CREATE INDEX IF NOT EXISTS idx_facts_agent        ON facts(agent_id);
 CREATE INDEX IF NOT EXISTS idx_facts_type         ON facts(fact_type);
-CREATE INDEX IF NOT EXISTS idx_facts_workspace    ON facts(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_facts_durability   ON facts(durability, valid_until);
 
 -- FTS5 for lexical retrieval
 CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(
@@ -147,7 +145,6 @@ CREATE TABLE IF NOT EXISTS conflicts (
 CREATE INDEX IF NOT EXISTS idx_conflicts_status    ON conflicts(status);
 CREATE INDEX IF NOT EXISTS idx_conflicts_fact_a    ON conflicts(fact_a_id);
 CREATE INDEX IF NOT EXISTS idx_conflicts_fact_b    ON conflicts(fact_b_id);
-CREATE INDEX IF NOT EXISTS idx_conflicts_workspace ON conflicts(workspace_id);
 
 -- Agent registry
 CREATE TABLE IF NOT EXISTS agents (
@@ -201,6 +198,16 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+"""
+
+# ── Post-migration indexes (SQLite) ─────────────────────────────────
+# Indexes on columns added by migrations (workspace_id, durability).
+# These must run AFTER migrations so the columns exist on older databases.
+
+POST_MIGRATION_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_facts_workspace    ON facts(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_facts_durability   ON facts(durability, valid_until);
+CREATE INDEX IF NOT EXISTS idx_conflicts_workspace ON conflicts(workspace_id);
 """
 
 # ── PostgreSQL schema (team mode) ────────────────────────────────────
