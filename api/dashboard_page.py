@@ -56,34 +56,177 @@ def _render_dashboard() -> str:
     .btn-danger:hover { background: rgba(239,68,68,0.25); }
 
     /* ── AUTH SCREEN ────────────────────────────────────────────── */
-    #auth-screen { display: none; padding: 80px 0; }
-    .auth-card { max-width: 440px; margin: 0 auto; background: var(--bg-card);
-      border: 1px solid var(--border); border-radius: 20px; padding: 40px; }
-    .auth-card h2 { font-size: 24px; font-weight: 700; color: var(--t1); margin-bottom: 8px; }
-    .auth-card .subtitle { font-size: 14px; color: var(--t2); margin-bottom: 28px; }
-    .auth-tabs { display: flex; gap: 4px; margin-bottom: 24px;
-      background: rgba(0,0,0,0.2); border-radius: 10px; padding: 4px; }
-    .auth-tab { flex: 1; padding: 8px; background: none; border: none; border-radius: 8px;
-      color: var(--tm); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
-      transition: all 0.2s; }
-    .auth-tab.active { background: rgba(52,211,153,0.1); color: var(--em4); }
-    .field { margin-bottom: 16px; }
-    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--tm);
-      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-    .field input { width: 100%; padding: 12px 14px; background: rgba(0,0,0,0.3);
-      border: 1px solid var(--border); border-radius: 10px; font-size: 14px;
-      font-family: inherit; color: var(--t1); transition: border-color 0.2s; }
-    .field input:focus { outline: none; border-color: var(--em5); box-shadow: 0 0 0 3px rgba(52,211,153,0.1); }
-    .field input::placeholder { color: var(--tm); }
-    .auth-submit { width: 100%; padding: 13px; background: linear-gradient(135deg, var(--em6), var(--em7));
-      color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600;
-      cursor: pointer; font-family: inherit; margin-top: 8px;
-      box-shadow: 0 2px 12px rgba(5,150,105,0.25); transition: opacity 0.2s; }
-    .auth-submit:hover { opacity: 0.9; }
-    .auth-submit:disabled { opacity: 0.4; cursor: not-allowed; }
-    .auth-msg { font-size: 13px; margin-top: 12px; text-align: center; display: none; }
-    .auth-msg.error { color: var(--red); }
-    .auth-msg.success { color: var(--em4); }
+    #auth-screen {
+      display: none; position: fixed; inset: 0; z-index: 50;
+      background: var(--bg); overflow-y: auto;
+    }
+    .auth-layout {
+      display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh;
+    }
+
+    /* Left branding panel */
+    .auth-brand {
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 60px 64px; position: relative; overflow: hidden;
+      background: linear-gradient(160deg, rgba(5,150,105,0.06) 0%, transparent 60%);
+      border-right: 1px solid var(--border);
+    }
+    .auth-brand-glow {
+      position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none;
+    }
+    .auth-brand-glow-1 {
+      width: 400px; height: 400px; background: var(--em6);
+      opacity: 0.07; top: -100px; left: -100px;
+    }
+    .auth-brand-glow-2 {
+      width: 300px; height: 300px; background: #0891b2;
+      opacity: 0.06; bottom: -60px; right: 40px;
+    }
+    .auth-brand-logo {
+      font-size: 22px; font-weight: 700; color: var(--em4); letter-spacing: -0.03em;
+      display: flex; align-items: center; gap: 9px; margin-bottom: 56px;
+      text-decoration: none;
+    }
+    .auth-brand-logo-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--em4);
+      box-shadow: 0 0 14px var(--em4), 0 0 28px rgba(52,211,153,0.25);
+      animation: pulse-dot 3s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100% { box-shadow: 0 0 14px var(--em4), 0 0 28px rgba(52,211,153,0.25); }
+      50%      { box-shadow: 0 0 6px var(--em4),  0 0 12px rgba(52,211,153,0.1); }
+    }
+    .auth-brand-heading {
+      font-size: 38px; font-weight: 800; letter-spacing: -0.03em;
+      line-height: 1.15; color: var(--t1); margin-bottom: 18px;
+    }
+    .auth-brand-heading span { color: var(--em4); }
+    .auth-brand-sub {
+      font-size: 16px; color: var(--t2); line-height: 1.65; margin-bottom: 48px;
+    }
+    .auth-features { display: flex; flex-direction: column; gap: 18px; }
+    .auth-feature { display: flex; align-items: flex-start; gap: 14px; }
+    .auth-feature-icon {
+      width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+      background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; margin-top: 1px;
+    }
+    .auth-feature-text strong { display: block; font-size: 14px; font-weight: 600; color: var(--t1); }
+    .auth-feature-text span { font-size: 13px; color: var(--t2); }
+
+    /* Right form panel */
+    .auth-form-panel {
+      display: flex; align-items: center; justify-content: center;
+      padding: 60px 64px;
+    }
+    .auth-form-inner { width: 100%; max-width: 400px; }
+    .auth-form-heading { font-size: 26px; font-weight: 800; letter-spacing: -0.02em;
+      color: var(--t1); margin-bottom: 6px; }
+    .auth-form-sub { font-size: 14px; color: var(--t2); margin-bottom: 32px; }
+
+    /* Tab switcher */
+    .auth-tab-wrap {
+      display: flex; background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border); border-radius: 12px; padding: 4px;
+      margin-bottom: 28px; position: relative;
+    }
+    .auth-tab-slider {
+      position: absolute; top: 4px; left: 4px; height: calc(100% - 8px);
+      width: calc(50% - 4px); background: rgba(52,211,153,0.1);
+      border: 1px solid rgba(52,211,153,0.18); border-radius: 9px;
+      transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+    }
+    .auth-tab-slider.right { transform: translateX(calc(100% + 4px)); }
+    .auth-tab {
+      flex: 1; padding: 9px 0; background: none; border: none;
+      color: var(--tm); font-size: 14px; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: color 0.2s; position: relative; z-index: 1;
+      border-radius: 8px;
+    }
+    .auth-tab.active { color: var(--em4); }
+
+    /* Fields */
+    .auth-field { margin-bottom: 18px; }
+    .auth-field label {
+      display: block; font-size: 13px; font-weight: 500; color: var(--t2);
+      margin-bottom: 7px;
+    }
+    .auth-field-wrap { position: relative; }
+    .auth-field input {
+      width: 100%; padding: 13px 16px; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(52,211,153,0.1); border-radius: 11px; font-size: 14px;
+      font-family: inherit; color: var(--t1);
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    .auth-field input:focus {
+      outline: none; background: rgba(255,255,255,0.06);
+      border-color: var(--em5); box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
+    }
+    .auth-field input::placeholder { color: rgba(167,243,208,0.25); }
+    .auth-field input.has-toggle { padding-right: 48px; }
+    .pw-toggle {
+      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; color: var(--tm);
+      padding: 4px; display: flex; align-items: center;
+      transition: color 0.2s;
+    }
+    .pw-toggle:hover { color: var(--em4); }
+
+    /* Submit button */
+    .auth-submit-btn {
+      width: 100%; padding: 14px; margin-top: 8px;
+      background: linear-gradient(135deg, var(--em5) 0%, var(--em7) 100%);
+      color: white; border: none; border-radius: 11px; font-size: 15px; font-weight: 700;
+      cursor: pointer; font-family: inherit; letter-spacing: -0.01em;
+      box-shadow: 0 4px 20px rgba(16,185,129,0.25), 0 1px 3px rgba(0,0,0,0.3);
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .auth-submit-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(16,185,129,0.35), 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .auth-submit-btn:active:not(:disabled) { transform: translateY(0); }
+    .auth-submit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white; border-radius: 50%;
+      animation: spin 0.65s linear infinite; display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error / success message */
+    .auth-msg {
+      display: none; margin-top: 14px; padding: 11px 14px; border-radius: 9px;
+      font-size: 13px; font-weight: 500; animation: slideDown 0.2s ease;
+    }
+    @keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+    .auth-msg.error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; }
+    .auth-msg.success { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.2); color: var(--em4); }
+
+    .auth-divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 22px 0; color: var(--tm); font-size: 12px;
+    }
+    .auth-divider::before, .auth-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+    .auth-switch {
+      text-align: center; font-size: 13px; color: var(--t2); margin-top: 20px;
+    }
+    .auth-switch button {
+      background: none; border: none; color: var(--em4); font-weight: 600;
+      cursor: pointer; font-family: inherit; font-size: 13px;
+      padding: 0; transition: opacity 0.2s;
+    }
+    .auth-switch button:hover { opacity: 0.8; }
+
+    @media (max-width: 900px) {
+      .auth-layout { grid-template-columns: 1fr; }
+      .auth-brand { display: none; }
+      .auth-form-panel { padding: 48px 28px; min-height: 100vh; }
+    }
 
     /* ── WORKSPACE LIST ─────────────────────────────────────────── */
     #ws-list-screen { display: none; padding: 40px 0; }
@@ -283,26 +426,89 @@ def _render_dashboard() -> str:
 
 <!-- ── AUTH SCREEN ───────────────────────────────────────────────── -->
 <div id="auth-screen">
-  <div class="container">
-    <div class="auth-card">
-      <h2>Welcome to Engram</h2>
-      <p class="subtitle">Sign in or create an account to manage your workspaces.</p>
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Sign in</button>
-        <button class="auth-tab" id="tab-signup" onclick="switchAuthTab('signup')">Create account</button>
+  <div class="auth-layout">
+
+    <!-- Left: branding -->
+    <div class="auth-brand">
+      <div class="auth-brand-glow auth-brand-glow-1"></div>
+      <div class="auth-brand-glow auth-brand-glow-2"></div>
+      <a href="/" class="auth-brand-logo">
+        <span class="auth-brand-logo-dot"></span>engram
+      </a>
+      <h1 class="auth-brand-heading">Shared memory<br>for your <span>AI team</span></h1>
+      <p class="auth-brand-sub">Every agent on your team sees the same verified facts,<br>conflicts, and decisions — in real time.</p>
+      <div class="auth-features">
+        <div class="auth-feature">
+          <div class="auth-feature-icon">⚡</div>
+          <div class="auth-feature-text">
+            <strong>Zero setup</strong>
+            <span>One invite key. Works with any MCP-compatible IDE.</span>
+          </div>
+        </div>
+        <div class="auth-feature">
+          <div class="auth-feature-icon">🔒</div>
+          <div class="auth-feature-text">
+            <strong>Private by default</strong>
+            <span>All data encrypted. Never shared, always yours.</span>
+          </div>
+        </div>
+        <div class="auth-feature">
+          <div class="auth-feature-icon">🧠</div>
+          <div class="auth-feature-text">
+            <strong>Conflict detection</strong>
+            <span>Automatically flags contradictions across agents.</span>
+          </div>
+        </div>
       </div>
-      <div class="field">
-        <label>Email</label>
-        <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" />
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" />
-      </div>
-      <button class="auth-submit" id="auth-submit-btn" onclick="submitAuth()">Sign in</button>
-      <div class="auth-msg error" id="auth-error"></div>
-      <div class="auth-msg success" id="auth-success"></div>
     </div>
+
+    <!-- Right: form -->
+    <div class="auth-form-panel">
+      <div class="auth-form-inner">
+        <h2 class="auth-form-heading" id="auth-heading">Welcome back</h2>
+        <p class="auth-form-sub" id="auth-subheading">Sign in to your Engram account</p>
+
+        <div class="auth-tab-wrap">
+          <div class="auth-tab-slider" id="auth-tab-slider"></div>
+          <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Sign in</button>
+          <button class="auth-tab" id="tab-signup" onclick="switchAuthTab('signup')">Create account</button>
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-email">Email address</label>
+          <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="auth-field">
+          <label for="auth-password">Password</label>
+          <div class="auth-field-wrap">
+            <input type="password" id="auth-password" placeholder="••••••••"
+              autocomplete="current-password" class="has-toggle" />
+            <button class="pw-toggle" type="button" onclick="togglePassword()" title="Show/hide password" aria-label="Toggle password visibility">
+              <svg id="pw-eye" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button class="auth-submit-btn" id="auth-submit-btn" onclick="submitAuth()">
+          <div class="spinner" id="auth-spinner"></div>
+          <span id="auth-btn-label">Sign in</span>
+        </button>
+
+        <div class="auth-msg error" id="auth-error"></div>
+        <div class="auth-msg success" id="auth-success"></div>
+
+        <div class="auth-switch">
+          <span id="auth-switch-text">Don't have an account?</span>
+          <button onclick="switchAuthTab(authMode === 'login' ? 'signup' : 'login')" id="auth-switch-btn">Create one</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -484,9 +690,27 @@ function switchAuthTab(mode) {
   authMode = mode;
   document.getElementById('tab-login').classList.toggle('active', mode === 'login');
   document.getElementById('tab-signup').classList.toggle('active', mode === 'signup');
-  document.getElementById('auth-submit-btn').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+  document.getElementById('auth-tab-slider').classList.toggle('right', mode === 'signup');
+  const isLogin = mode === 'login';
+  document.getElementById('auth-heading').textContent = isLogin ? 'Welcome back' : 'Create an account';
+  document.getElementById('auth-subheading').textContent = isLogin ? 'Sign in to your Engram account' : 'Start sharing memory with your AI team';
+  document.getElementById('auth-btn-label').textContent = isLogin ? 'Sign in' : 'Create account';
+  document.getElementById('auth-switch-text').textContent = isLogin ? "Don't have an account?" : 'Already have an account?';
+  document.getElementById('auth-switch-btn').textContent = isLogin ? 'Create one' : 'Sign in';
   document.getElementById('auth-error').style.display = 'none';
   document.getElementById('auth-success').style.display = 'none';
+  // Reset password field autocomplete attribute
+  document.getElementById('auth-password').autocomplete = isLogin ? 'current-password' : 'new-password';
+}
+
+function togglePassword() {
+  const input = document.getElementById('auth-password');
+  const isHidden = input.type === 'password';
+  input.type = isHidden ? 'text' : 'password';
+  const svg = document.getElementById('pw-eye');
+  svg.innerHTML = isHidden
+    ? '<path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>'
+    : '<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>';
 }
 
 async function submitAuth() {
@@ -494,9 +718,12 @@ async function submitAuth() {
   const password = document.getElementById('auth-password').value;
   const errEl = document.getElementById('auth-error');
   const btn = document.getElementById('auth-submit-btn');
+  const spinner = document.getElementById('auth-spinner');
+  const label = document.getElementById('auth-btn-label');
   errEl.style.display = 'none';
   btn.disabled = true;
-  btn.textContent = '…';
+  spinner.style.display = 'block';
+  label.style.opacity = '0.6';
 
   const endpoint = authMode === 'login' ? '/auth/login' : '/auth/signup';
   try {
@@ -507,22 +734,22 @@ async function submitAuth() {
     });
     const d = await r.json();
     if (!r.ok) {
-      errEl.textContent = d.error || 'Auth failed';
+      errEl.textContent = d.error || 'Authentication failed. Please try again.';
       errEl.style.display = 'block';
       return;
     }
-    // Reload full session
     const meR = await fetch('/auth/me', { credentials: 'include' });
     SESSION = await meR.json();
     updateHeader();
     document.getElementById('auth-screen').style.display = 'none';
     showWsListScreen(SESSION.workspaces);
   } catch(e) {
-    errEl.textContent = 'Connection error';
+    errEl.textContent = 'Connection error — please try again.';
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
-    btn.textContent = authMode === 'login' ? 'Sign in' : 'Create account';
+    spinner.style.display = 'none';
+    label.style.opacity = '1';
   }
 }
 
