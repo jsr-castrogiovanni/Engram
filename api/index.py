@@ -645,20 +645,6 @@ def _render_landing() -> str:
     </div>
   </div>
 
-  <!-- Tools -->
-  <div class="card reveal">
-    <div class="section-label">MCP Tools</div>
-    <div class="section-title">Four tools. That's it.</div>
-    <div class="section-desc">Your agents use these automatically. No configuration needed.</div>
-
-    <div class="tools-grid">
-      <div class="tool-item"><code>engram_commit</code><p>Persist a verified discovery to shared memory</p></div>
-      <div class="tool-item"><code>engram_query</code><p>Pull what your team's agents already know</p></div>
-      <div class="tool-item"><code>engram_conflicts</code><p>Surface contradictions between agents' beliefs</p></div>
-      <div class="tool-item"><code>engram_resolve</code><p>Settle a disagreement with a decision or merge</p></div>
-    </div>
-  </div>
-
 </div>
 
 <footer>
