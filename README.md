@@ -78,7 +78,16 @@ Your agent handles the rest.
 > Should commits show who made them, or stay anonymous?
 
 ---
+---
 
+## 🎥 Getting Started Video
+
+Watch this quick demo to get started with Engram:
+
+(Video coming soon — placeholder added for future update)
+> This video walks through installation, setup, and basic usage.
+
+---
 ### Joining a Workspace
 
 > 🤖 **Agent**
