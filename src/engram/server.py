@@ -190,7 +190,7 @@ async def engram_init(
         # Check if .env file exists in current directory
         env_file = Path.cwd() / ".env"
         env_exists = env_file.exists()
-        
+
         return {
             "status": "awaiting_db",
             "next_prompt": (
@@ -198,13 +198,13 @@ async def engram_init(
                 + (
                     f"I see you have a .env file at {env_file}. Add this line:\n\n"
                     "  ENGRAM_DB_URL='postgres://user:password@host:port/database'\n\n"
-                    if env_exists else
-                    "Create a .env file in your project root with:\n\n"
+                    if env_exists
+                    else "Create a .env file in your project root with:\n\n"
                     "  ENGRAM_DB_URL='postgres://user:password@host:port/database'\n\n"
                     "Or set it in your shell config (.bashrc, .zshrc, etc.):\n\n"
                     "  export ENGRAM_DB_URL='postgres://user:password@host:port/database'\n\n"
-                ) +
-                "IMPORTANT: Don't paste your database URL in this chat for security reasons.\n\n"
+                )
+                + "IMPORTANT: Don't paste your database URL in this chat for security reasons.\n\n"
                 "You can:\n"
                 "  • Use your existing app database (Engram creates a separate 'engram' schema)\n"
                 "  • Get a free dedicated database at neon.tech, supabase.com, or railway.app\n\n"
@@ -231,6 +231,7 @@ async def engram_init(
     if _storage is not None:
         from datetime import timezone
         import time
+
         expires_ts = datetime.fromtimestamp(
             time.time() + invite_expires_days * 86400, tz=timezone.utc
         ).isoformat()
@@ -254,7 +255,9 @@ async def engram_init(
         is_creator=True,
     )
     write_workspace(config)
-    logger.info("Workspace initialized: %s (schema: %s, anonymous=%s)", engram_id, schema, anonymous_mode)
+    logger.info(
+        "Workspace initialized: %s (schema: %s, anonymous=%s)", engram_id, schema, anonymous_mode
+    )
 
     return {
         "status": "initialized",
@@ -340,7 +343,9 @@ async def engram_join(invite_key: str) -> dict[str, Any]:
         is_creator=False,
     )
     write_workspace(config)
-    logger.info("Joined workspace: %s (schema: %s, generation: %d)", engram_id, schema, key_generation)
+    logger.info(
+        "Joined workspace: %s (schema: %s, generation: %d)", engram_id, schema, key_generation
+    )
 
     return {
         "status": "joined",
@@ -568,6 +573,7 @@ async def engram_commit(
 
     # Key generation check — block disconnected agents
     from engram.workspace import read_workspace as _rw
+
     _ws = _rw()
     _disc = await _check_key_generation(_ws)
     if _disc:
@@ -585,6 +591,7 @@ async def engram_commit(
     # Scope permission check (Phase 5)
     if _storage is not None and agent_id:
         from engram.auth import check_scope_permission
+
         allowed = await check_scope_permission(_storage, agent_id, scope, "write")
         if not allowed:
             raise ValueError(
@@ -670,6 +677,7 @@ async def engram_query(
 
     # Key generation check — block disconnected agents
     from engram.workspace import read_workspace as _rw
+
     _ws = _rw()
     _disc = await _check_key_generation(_ws)
     if _disc:
@@ -678,6 +686,7 @@ async def engram_query(
     # Scope read permission check when auth is enabled and scope is specified
     if _auth_enabled and _storage is not None and agent_id and scope:
         from engram.auth import check_scope_permission
+
         allowed = await check_scope_permission(_storage, agent_id, scope, "read")
         if not allowed:
             raise ValueError(
@@ -786,13 +795,27 @@ async def engram_promote(fact_id: str) -> dict[str, Any]:
     become part of the team's persistent knowledge base. Promotion makes
     the fact visible in default queries and enables conflict detection.
 
+    IMPORTANT: Only promote facts you're confident are valuable. Promotion
+    signals to the team that this knowledge is trustworthy and worth
+    remembering permanently.
+
+    IMPORTANT: To get fact_id, query with include_ephemeral=true. Ephemeral
+    facts in query results include their fact_id field. You can then pass
+    that ID here to promote it.
+
     Ephemeral facts are also auto-promoted when they appear in query
     results at least twice (the "proved useful more than once" heuristic),
     so explicit promotion is only needed when you want to fast-track a
-    fact you know is valuable.
+    fact you know is valuable immediately.
+
+    Example workflow:
+    1. Query with include_ephemeral=true to find relevant ephemeral facts
+    2. Review the facts and determine which are valuable enough to promote
+    3. Call engram_promote with the fact_id of each valuable fact
 
     Parameters:
-    - fact_id: The ID of the ephemeral fact to promote.
+    - fact_id: The ID of the ephemeral fact to promote. Get this from
+      query results (include_ephemeral=true returns fact_id for each fact).
 
     Returns: {promoted: true, fact_id, durability: "durable"}
     """
