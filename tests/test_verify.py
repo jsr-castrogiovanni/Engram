@@ -6,7 +6,24 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
-from engram.cli import main
+from engram.cli import main, _MCP_CLIENTS
+
+
+_REAL_HOME = Path.home()
+
+
+def _rebased_mcp_clients(home: Path) -> dict:
+    """Rebuild _MCP_CLIENTS with paths rooted under *home*."""
+    rebuilt = {}
+    for name, cfg in _MCP_CLIENTS.items():
+        new_cfg = dict(cfg)
+        try:
+            relative = cfg["path"].relative_to(_REAL_HOME)
+            new_cfg["path"] = home / relative
+        except ValueError:
+            pass  # non-home paths (XDG etc.) — leave as-is
+        rebuilt[name] = new_cfg
+    return rebuilt
 
 
 class TestVerifyCommand:
@@ -20,7 +37,10 @@ class TestVerifyCommand:
     @pytest.fixture
     def temp_home(self, tmp_path):
         """Create a temporary home directory for tests."""
-        with patch("pathlib.Path.home", return_value=tmp_path):
+        workspace_path = tmp_path / ".engram" / "workspace.json"
+        with patch("pathlib.Path.home", return_value=tmp_path), \
+             patch("engram.workspace.WORKSPACE_PATH", workspace_path), \
+             patch("engram.cli._MCP_CLIENTS", _rebased_mcp_clients(tmp_path)):
             yield tmp_path
 
     def test_verify_no_workspace(self, cli_runner, temp_home):
@@ -189,7 +209,10 @@ class TestVerifyMCPClientDetection:
 
     @pytest.fixture
     def temp_home(self, tmp_path):
-        with patch("pathlib.Path.home", return_value=tmp_path):
+        workspace_path = tmp_path / ".engram" / "workspace.json"
+        with patch("pathlib.Path.home", return_value=tmp_path), \
+             patch("engram.workspace.WORKSPACE_PATH", workspace_path), \
+             patch("engram.cli._MCP_CLIENTS", _rebased_mcp_clients(tmp_path)):
             yield tmp_path
 
     def test_detects_multiple_ides(self, cli_runner, temp_home):
