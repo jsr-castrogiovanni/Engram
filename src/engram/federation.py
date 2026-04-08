@@ -55,7 +55,8 @@ class FederationClient:
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=30, connect=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, params=params, headers=headers) as resp:
                 if resp.status != 200:
                     text = await resp.text()
