@@ -315,11 +315,12 @@ async def engram_join(invite_key: str) -> dict[str, Any]:
     schema = payload.get("schema", "engram")  # backward compatibility
     key_generation = payload.get("key_generation", 0)
 
-    # Server-side validation: check uses_remaining and expiry in the database
+    # Atomically validate and consume the invite key in a single query
+    # to prevent TOCTOU race conditions with concurrent joins.
     key_hash = invite_key_hash(invite_key)
     if _storage is not None:
-        key_row = await _storage.validate_invite_key(key_hash)
-        if key_row is None:
+        consumed = await _storage.consume_invite_key(key_hash)
+        if consumed is None:
             return {
                 "status": "error",
                 "next_prompt": (
@@ -327,7 +328,6 @@ async def engram_join(invite_key: str) -> dict[str, Any]:
                     "Ask the workspace creator to generate a new one with engram_reset_invite_key."
                 ),
             }
-        await _storage.consume_invite_key(key_hash)
 
     # Write workspace.json — db_url extracted silently, never shown to user
     config = WorkspaceConfig(

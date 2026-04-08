@@ -249,8 +249,9 @@ class BaseStorage(ABC):
         """Return invite key row if valid (not expired, uses remaining). Default None."""
         return None
 
-    async def consume_invite_key(self, key_hash: str) -> None:
-        """Decrement uses_remaining. Default no-op for local mode."""
+    async def consume_invite_key(self, key_hash: str) -> dict | None:
+        """Atomically validate and decrement uses_remaining. Returns the key row if consumed, None if exhausted/expired."""
+        return None
 
     async def get_key_generation(self, engram_id: str) -> int:
         """Return the current key_generation for a workspace. Default 0."""
@@ -1028,14 +1029,19 @@ class SQLiteStorage(BaseStorage):
         row = await cursor.fetchone()
         return dict(row) if row else None
 
-    async def consume_invite_key(self, key_hash: str) -> None:
-        await self.db.execute(
+    async def consume_invite_key(self, key_hash: str) -> dict | None:
+        cursor = await self.db.execute(
             """UPDATE invite_keys
                SET uses_remaining = uses_remaining - 1
-               WHERE key_hash = ? AND uses_remaining IS NOT NULL""",
-            (key_hash,),
+               WHERE key_hash = ?
+                 AND (expires_at IS NULL OR expires_at > ?)
+                 AND (uses_remaining IS NULL OR uses_remaining > 0)
+               RETURNING *""",
+            (key_hash, _now_iso()),
         )
+        row = await cursor.fetchone()
         await self.db.commit()
+        return dict(row) if row else None
 
     async def get_key_generation(self, engram_id: str) -> int:
         cursor = await self.db.execute(
