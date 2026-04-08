@@ -2,7 +2,7 @@
 
 *We're building something that doesn't exist yet. The people who help build it become part of it.*
 
-**$35–$65/hour · Paid weekly · 10–20 hrs/week · Remote · Contract**
+**$125–$185/hour · Paid weekly · 10–20 hrs/week · Remote · Contract**
 
 ---
 
@@ -67,7 +67,7 @@ No application. No cover letter. Your work is your introduction.
 
 That's it. We review every contribution and follow up directly with everyone who submits something meaningful.
 
-Strong contributors receive paid contract offers. $35–$65/hour, paid weekly, 10–20 hours/week. We don't make people wait months to find out.
+Strong contributors receive paid contract offers. $125–$185/hour, paid weekly, 10–20 hours/week. We don't make people wait months to find out.
 
 To reach us directly: **healthandwellness884@gmail.com** — GitHub username or PR link is enough to start a conversation.
 
