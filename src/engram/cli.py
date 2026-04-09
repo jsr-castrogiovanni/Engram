@@ -699,54 +699,17 @@ def token_create(engineer: str, agent_id: str | None, expires_hours: int) -> Non
     click.echo(tok)
 
 
-# ── engram config ─────────────────────────────────────────────────────
 # ── engram config ────────────────────────────────────────────────────
 
 
 @main.group()
 def config() -> None:
-    """View and update workspace configuration."""
     """Show and update workspace settings."""
     pass
 
 
 @config.command("show")
 def config_show() -> None:
-    """Pretty-print the current workspace configuration."""
-    from engram.workspace import read_workspace, WORKSPACE_PATH
-    import os
-
-    if not WORKSPACE_PATH.exists():
-        db_url = os.environ.get("ENGRAM_DB_URL", "")
-        if not db_url:
-            click.echo("Error: No workspace configured.")
-            click.echo("  Run: engram init   or   engram join <invite-key>")
-            return
-        # Show env-based config
-        click.echo("=== Engram Configuration (from environment) ===")
-        click.echo(f"Mode: local (SQLite)")
-        click.echo(
-            f"Database URL: {db_url[:30]}..." if len(db_url) > 30 else f"Database URL: {db_url}"
-        )
-        return
-
-    ws = read_workspace()
-    if not ws:
-        click.echo("Error: Invalid workspace.json")
-        return
-
-    mode = "team (PostgreSQL)" if ws.db_url else "local (SQLite)"
-    click.echo("=== Engram Configuration ===")
-    click.echo(f"Engram ID: {ws.engram_id}")
-    click.echo(f"Mode: {mode}")
-    click.echo(f"Schema: {ws.schema}")
-    click.echo(f"Display Name: {ws.display_name or '(not set)'}")
-    click.echo(f"Anonymous Mode: {ws.anonymous_mode}")
-    click.echo(f"Anon Agents: {ws.anon_agents}")
-    if ws.db_url:
-        click.echo(
-            f"Database: {ws.db_url[:40]}..." if len(ws.db_url) > 40 else f"Database: {ws.db_url}"
-        )
     """Pretty-print the current editable workspace settings."""
     from engram.workspace import read_workspace_settings
 
@@ -762,48 +725,16 @@ def config_show() -> None:
 @click.argument("key")
 @click.argument("value")
 def config_set(key: str, value: str) -> None:
-    """Update a single configuration field with validation.
+    """Update a single editable workspace setting."""
+    from engram.workspace import parse_config_value, set_workspace_setting
 
-    Keys: anonymous_mode, anon_agents, display_name
+    try:
+        parsed_value = parse_config_value(key, value)
+        set_workspace_setting(key, value)
+    except ValueError as e:
+        raise click.ClickException(str(e))
 
-    Examples:
-        engram config set display_name "My Team"
-        engram config set anonymous_mode true
-        engram config set anon_agents false
-    """
-    from engram.workspace import read_workspace, write_workspace, WORKSPACE_PATH
-    import os
-
-    valid_keys = {"anonymous_mode", "anon_agents", "display_name"}
-    if key not in valid_keys:
-        click.echo(f"Error: Invalid key '{key}'. Valid keys: {', '.join(sorted(valid_keys))}")
-        return
-
-    if not WORKSPACE_PATH.exists():
-        click.echo("Error: No workspace configured.")
-        click.echo("  Run: engram init   or   engram join <invite-key>")
-        return
-
-    ws = read_workspace()
-    if not ws:
-        click.echo("Error: Invalid workspace.json")
-        return
-
-    # Validate and set value
-    if key in ("anonymous_mode", "anon_agents"):
-        if value.lower() not in ("true", "false"):
-            click.echo(f"Error: Value for '{key}' must be 'true' or 'false'")
-            return
-        bool_value = value.lower() == "true"
-        if key == "anonymous_mode":
-            ws.anonymous_mode = bool_value
-        else:
-            ws.anon_agents = bool_value
-    else:  # display_name
-        ws.display_name = value
-
-    write_workspace(ws)
-    click.echo(f"✓ Updated {key} = {value}")
+    click.echo(f"Updated {key}={json.dumps(parsed_value)}")
 
 
 # ── engram tail ─────────────────────────────────────────────────────────
@@ -829,20 +760,68 @@ def tail(interval: int, scope: str | None, max_count: int | None) -> None:
     """
     import os
     import time
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     ws = None
-    """Update a single editable workspace setting."""
-    from engram.workspace import parse_config_value, set_workspace_setting
+    try:
+        from engram.workspace import read_workspace
+
+        ws = read_workspace()
+    except Exception:
+        pass
+
+    mcp_url = os.environ.get("ENGRAM_MCP_URL", "http://localhost:7474")
+    base_url = mcp_url.replace("/mcp", "") if "/mcp" in mcp_url else mcp_url
+
+    workspace_id = ws.engram_id if ws and ws.engram_id else "local"
+    if ws and ws.db_url:
+        scope_filter = f"{workspace_id}.{scope}" if scope else workspace_id
+    else:
+        scope_filter = scope or workspace_id
+
+    last_time = int(time.time() * 1000)
+    count = 0
+
+    click.echo(f"Watching for new facts... (polling every {interval}s, scope: {scope_filter})")
+    click.echo("Press Ctrl+C to stop\n")
 
     try:
-        parsed_value = parse_config_value(key, value)
-        set_workspace_setting(key, value)
-    except ValueError as e:
-        raise click.ClickException(str(e))
+        while True:
+            try:
+                url = f"{base_url}/api/federation/facts?after={last_time}&scope={scope_filter}&limit=50"
+                req = urllib.request.Request(url, headers={"Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read())
+                    facts = data.get("facts", [])
 
-    click.echo(f"Updated {key}={json.dumps(parsed_value)}")
+                    for fact in facts:
+                        fact_time = fact.get("created_at", 0)
+                        if fact_time > last_time:
+                            last_time = fact_time
+
+                        agent = fact.get("agent_id", "?")
+                        fact_scope = fact.get("scope", "")
+                        content = fact.get("content", "")[:100]
+                        if len(fact.get("content", "")) > 100:
+                            content += "..."
+
+                        click.echo(f"[{agent}] [{fact_scope}] {content}")
+
+                        count += 1
+                        if max_count and count >= max_count:
+                            click.echo(f"\nReached {max_count} facts, stopping.")
+                            return
+            except urllib.error.URLError as e:
+                click.echo(f"Warning: Could not fetch facts: {e.reason}", err=True)
+            except json.JSONDecodeError:
+                click.echo("Warning: Invalid response from server", err=True)
+            except Exception as e:
+                click.echo(f"Error: {e}", err=True)
+
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        click.echo(f"\nStopped after {count} facts.")
 
 
 # ── engram search ────────────────────────────────────────────────────
@@ -894,62 +873,6 @@ async def _search_once(topic: str, scope: str | None, limit: int, as_json: bool)
         from engram.workspace import read_workspace
 
         ws = read_workspace()
-    except Exception:
-        pass
-
-    # Determine the MCP URL
-    mcp_url = os.environ.get("ENGRAM_MCP_URL", "http://localhost:7474")
-    base_url = mcp_url.replace("/mcp", "") if "/mcp" in mcp_url else mcp_url
-
-    # Get workspace ID for filtering
-    workspace_id = ws.engram_id if ws and ws.engram_id else "local"
-    if ws and ws.db_url:
-        scope_filter = f"{workspace_id}.{scope}" if scope else workspace_id
-    else:
-        scope_filter = scope or workspace_id
-
-    last_time = int(time.time() * 1000)
-    count = 0
-
-    click.echo(f"Watching for new facts... (polling every {interval}s, scope: {scope_filter})")
-    click.echo("Press Ctrl+C to stop\n")
-
-    try:
-        while True:
-            try:
-                url = f"{base_url}/api/federation/facts?after={last_time}&scope={scope_filter}&limit=50"
-                req = urllib.request.Request(url, headers={"Accept": "application/json"})
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read())
-                    facts = data.get("facts", [])
-
-                    for fact in facts:
-                        fact_time = fact.get("created_at", 0)
-                        if fact_time > last_time:
-                            last_time = fact_time
-
-                        agent = fact.get("agent_id", "?")
-                        fact_scope = fact.get("scope", "")
-                        content = fact.get("content", "")[:100]
-                        if len(fact.get("content", "")) > 100:
-                            content += "..."
-
-                        click.echo(f"[{agent}] [{fact_scope}] {content}")
-
-                        count += 1
-                        if max_count and count >= max_count:
-                            click.echo(f"\nReached {max_count} facts, stopping.")
-                            return
-            except urllib.error.URLError as e:
-                click.echo(f"Warning: Could not fetch facts: {e.reason}", err=True)
-            except json.JSONDecodeError:
-                click.echo("Warning: Invalid response from server", err=True)
-            except Exception as e:
-                click.echo(f"Error: {e}", err=True)
-
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        click.echo(f"\nStopped after {count} facts.")
         if ws and ws.db_url:
             db_url = ws.db_url
             workspace_id = ws.engram_id
