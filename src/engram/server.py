@@ -1140,6 +1140,7 @@ async def engram_create_webhook(
     """
     engine = get_engine()
     from engram.workspace import read_workspace as _rw
+
     _ws = _rw()
     _disc = await _check_key_generation(_ws)
     if _disc:
@@ -1173,6 +1174,7 @@ async def engram_create_rule(
     """
     engine = get_engine()
     from engram.workspace import read_workspace as _rw
+
     _ws = _rw()
     _disc = await _check_key_generation(_ws)
     if _disc:

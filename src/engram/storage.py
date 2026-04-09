@@ -1630,7 +1630,9 @@ class SQLiteStorage(BaseStorage):
             (scope, self.workspace_id),
         )
         row = await cur.fetchone()
-        avg_confidence = round(float(row["avg_conf"]), 4) if row and row["avg_conf"] is not None else 0.0
+        avg_confidence = (
+            round(float(row["avg_conf"]), 4) if row and row["avg_conf"] is not None else 0.0
+        )
 
         return {
             "scope": scope,

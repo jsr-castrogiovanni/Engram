@@ -672,7 +672,9 @@ def build_rest_routes(
         if not isinstance(facts, list):
             return _error("'facts' must be an array.")
         try:
-            result = await engine.import_workspace(facts=facts, agent_id=agent_id, engineer=engineer)
+            result = await engine.import_workspace(
+                facts=facts, agent_id=agent_id, engineer=engineer
+            )
         except Exception as exc:
             logger.exception("REST /api/import error")
             return _error(str(exc), status=500)

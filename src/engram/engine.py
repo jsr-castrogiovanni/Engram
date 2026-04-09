@@ -344,12 +344,17 @@ class EngramEngine:
         except Exception:
             pass
         try:
-            asyncio.ensure_future(self._fire_event("fact.committed", {
-                "fact_id": fact_id,
-                "scope": scope,
-                "agent_id": agent_id,
-                "committed_at": now,
-            }))
+            asyncio.ensure_future(
+                self._fire_event(
+                    "fact.committed",
+                    {
+                        "fact_id": fact_id,
+                        "scope": scope,
+                        "agent_id": agent_id,
+                        "committed_at": now,
+                    },
+                )
+            )
         except Exception:
             pass
 
@@ -828,10 +833,15 @@ class EngramEngine:
             except Exception:
                 pass
             try:
-                asyncio.ensure_future(self._fire_event("conflict.resolved", {
-                    "conflict_id": conflict_id,
-                    "resolution_type": resolution_type,
-                }))
+                asyncio.ensure_future(
+                    self._fire_event(
+                        "conflict.resolved",
+                        {
+                            "conflict_id": conflict_id,
+                            "resolution_type": resolution_type,
+                        },
+                    )
+                )
             except Exception:
                 pass
 
@@ -951,7 +961,9 @@ class EngramEngine:
             raise ValueError(f"Conflict '{conflict_id}' not found.")
         await self.storage.insert_detection_feedback(conflict_id, feedback)
         try:
-            await self._audit("feedback", conflict_id=conflict_id, extra=json.dumps({"feedback": feedback}))
+            await self._audit(
+                "feedback", conflict_id=conflict_id, extra=json.dumps({"feedback": feedback})
+            )
         except Exception:
             pass
         return {"recorded": True, "conflict_id": conflict_id, "feedback": feedback}
@@ -1275,13 +1287,18 @@ class EngramEngine:
                                     conflict_id[:12],
                                 )
                             asyncio.ensure_future(self._apply_rules(conflict_id))
-                            asyncio.ensure_future(self._fire_event("conflict.detected", {
-                                "conflict_id": conflict_id,
-                                "fact_a_id": fact_id,
-                                "fact_b_id": c["id"],
-                                "scope": fact["scope"],
-                                "detection_tier": "tier0_entity",
-                            }))
+                            asyncio.ensure_future(
+                                self._fire_event(
+                                    "conflict.detected",
+                                    {
+                                        "conflict_id": conflict_id,
+                                        "fact_a_id": fact_id,
+                                        "fact_b_id": c["id"],
+                                        "scope": fact["scope"],
+                                        "detection_tier": "tier0_entity",
+                                    },
+                                )
+                            )
                             tier0_flagged.add(c["id"])
 
         # ── Tier 2b: Cross-scope entity detection ────────────────────
@@ -1327,13 +1344,18 @@ class EngramEngine:
                                     conflict_id[:12],
                                 )
                             asyncio.ensure_future(self._apply_rules(conflict_id))
-                            asyncio.ensure_future(self._fire_event("conflict.detected", {
-                                "conflict_id": conflict_id,
-                                "fact_a_id": fact_id,
-                                "fact_b_id": c["id"],
-                                "scope": fact["scope"],
-                                "detection_tier": "tier2b_cross_scope",
-                            }))
+                            asyncio.ensure_future(
+                                self._fire_event(
+                                    "conflict.detected",
+                                    {
+                                        "conflict_id": conflict_id,
+                                        "fact_a_id": fact_id,
+                                        "fact_b_id": c["id"],
+                                        "scope": fact["scope"],
+                                        "detection_tier": "tier2b_cross_scope",
+                                    },
+                                )
+                            )
                             tier2b_flagged.add(c["id"])
 
         # ── Tier 2: Numeric and temporal rules (parallel with Tier 1) ────
@@ -1381,13 +1403,18 @@ class EngramEngine:
                                         conflict_id[:12],
                                     )
                                 asyncio.ensure_future(self._apply_rules(conflict_id))
-                                asyncio.ensure_future(self._fire_event("conflict.detected", {
-                                    "conflict_id": conflict_id,
-                                    "fact_a_id": fact_id,
-                                    "fact_b_id": candidate["id"],
-                                    "scope": fact["scope"],
-                                    "detection_tier": "tier2_numeric",
-                                }))
+                                asyncio.ensure_future(
+                                    self._fire_event(
+                                        "conflict.detected",
+                                        {
+                                            "conflict_id": conflict_id,
+                                            "fact_a_id": fact_id,
+                                            "fact_b_id": candidate["id"],
+                                            "scope": fact["scope"],
+                                            "detection_tier": "tier2_numeric",
+                                        },
+                                    )
+                                )
                                 tier2_flagged.add(candidate["id"])
 
         # ── Tier 1: NLI cross-encoder ────────────────────────────────
@@ -1493,13 +1520,18 @@ class EngramEngine:
                                 conflict_id[:12],
                             )
                         asyncio.ensure_future(self._apply_rules(conflict_id))
-                        asyncio.ensure_future(self._fire_event("conflict.detected", {
-                            "conflict_id": conflict_id,
-                            "fact_a_id": fact_id,
-                            "fact_b_id": candidate["id"],
-                            "scope": fact["scope"],
-                            "detection_tier": "tier1_nli",
-                        }))
+                        asyncio.ensure_future(
+                            self._fire_event(
+                                "conflict.detected",
+                                {
+                                    "conflict_id": conflict_id,
+                                    "fact_a_id": fact_id,
+                                    "fact_b_id": candidate["id"],
+                                    "scope": fact["scope"],
+                                    "detection_tier": "tier1_nli",
+                                },
+                            )
+                        )
 
             except Exception:
                 logger.exception("NLI inference failed for pair %s / %s", fact_id, candidate["id"])
@@ -1696,9 +1728,14 @@ class EngramEngine:
                 expired = await self.storage.expire_ttl_facts()
                 if expired:
                     logger.info("TTL expiry: closed %d fact(s)", expired)
-                    asyncio.ensure_future(self._fire_event("fact.expired", {
-                        "count": expired,
-                    }))
+                    asyncio.ensure_future(
+                        self._fire_event(
+                            "fact.expired",
+                            {
+                                "count": expired,
+                            },
+                        )
+                    )
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -1763,7 +1800,6 @@ class EngramEngine:
             except Exception:
                 logger.exception("Calibration loop error")
 
-
     # ── Webhooks ─────────────────────────────────────────────────────
 
     async def create_webhook(
@@ -1801,12 +1837,14 @@ class EngramEngine:
                 events = json.loads(events)
             except Exception:
                 pass
-            result.append({
-                "webhook_id": r["id"],
-                "url": r["url"],
-                "events": events,
-                "created_at": r["created_at"],
-            })
+            result.append(
+                {
+                    "webhook_id": r["id"],
+                    "url": r["url"],
+                    "events": events,
+                    "created_at": r["created_at"],
+                }
+            )
         return result
 
     async def delete_webhook(self, webhook_id: str) -> dict[str, Any]:
@@ -1873,6 +1911,7 @@ class EngramEngine:
                     headers: dict[str, str] = {"Content-Type": "application/json"}
                     if secret:
                         import hmac
+
                         sig = hmac.new(
                             secret.encode(),
                             body.encode() if isinstance(body, str) else body,
@@ -1889,13 +1928,25 @@ class EngramEngine:
                             ) as resp:
                                 if resp.status < 300:
                                     await self.storage.mark_delivery_done(delivery["id"])
-                                    logger.debug("Webhook delivery %s -> %s OK (%d)", delivery["id"][:8], url, resp.status)
+                                    logger.debug(
+                                        "Webhook delivery %s -> %s OK (%d)",
+                                        delivery["id"][:8],
+                                        url,
+                                        resp.status,
+                                    )
                                 else:
                                     await self.storage.mark_delivery_failed(delivery["id"])
-                                    logger.warning("Webhook delivery %s -> %s failed (%d)", delivery["id"][:8], url, resp.status)
+                                    logger.warning(
+                                        "Webhook delivery %s -> %s failed (%d)",
+                                        delivery["id"][:8],
+                                        url,
+                                        resp.status,
+                                    )
                     except Exception as exc:
                         await self.storage.mark_delivery_failed(delivery["id"])
-                        logger.warning("Webhook delivery %s -> %s error: %s", delivery["id"][:8], url, exc)
+                        logger.warning(
+                            "Webhook delivery %s -> %s error: %s", delivery["id"][:8], url, exc
+                        )
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -1942,9 +1993,7 @@ class EngramEngine:
         """Create an auto-resolution rule."""
         valid_condition_types = ("latest_wins", "highest_confidence", "confidence_delta")
         if condition_type not in valid_condition_types:
-            raise ValueError(
-                f"condition_type must be one of: {', '.join(valid_condition_types)}."
-            )
+            raise ValueError(f"condition_type must be one of: {', '.join(valid_condition_types)}.")
         if not scope_prefix:
             raise ValueError("scope_prefix is required.")
         rule_id = uuid.uuid4().hex
@@ -1958,10 +2007,15 @@ class EngramEngine:
             "created_at": now,
         }
         await self.storage.insert_rule(rule)
-        await self._audit("rule_create", extra=json.dumps({
-            "scope_prefix": scope_prefix,
-            "condition_type": condition_type,
-        }))
+        await self._audit(
+            "rule_create",
+            extra=json.dumps(
+                {
+                    "scope_prefix": scope_prefix,
+                    "condition_type": condition_type,
+                }
+            ),
+        )
         return {"rule_id": rule_id, **rule}
 
     async def list_rules(self) -> list[dict[str, Any]]:
@@ -1998,7 +2052,11 @@ class EngramEngine:
             resolved = False
 
             if condition_type == "latest_wins":
-                winner = fact_a if (fact_a.get("committed_at", "") >= fact_b.get("committed_at", "")) else fact_b
+                winner = (
+                    fact_a
+                    if (fact_a.get("committed_at", "") >= fact_b.get("committed_at", ""))
+                    else fact_b
+                )
                 loser = fact_b if winner is fact_a else fact_a
                 await self.storage.close_validity_window(fact_id=loser["id"])
                 await self.storage.auto_resolve_conflict(
@@ -2050,7 +2108,9 @@ class EngramEngine:
             if resolved:
                 logger.info(
                     "Auto-resolved conflict %s via rule %s (%s)",
-                    conflict_id[:12], rule["id"][:8], condition_type,
+                    conflict_id[:12],
+                    rule["id"][:8],
+                    condition_type,
                 )
                 return  # Apply at most one rule per conflict
 
@@ -2105,12 +2165,14 @@ class EngramEngine:
         """Register or update a scope in the scope registry."""
         if not scope or not scope.strip():
             raise ValueError("scope is required.")
-        await self.storage.upsert_scope({
-            "scope": scope,
-            "description": description,
-            "owner_agent_id": owner_agent_id,
-            "retention_days": retention_days,
-        })
+        await self.storage.upsert_scope(
+            {
+                "scope": scope,
+                "description": description,
+                "owner_agent_id": owner_agent_id,
+                "retention_days": retention_days,
+            }
+        )
         return {"scope": scope, "registered": True}
 
     async def list_scopes(self) -> list[dict[str, Any]]:
@@ -2187,15 +2249,17 @@ class EngramEngine:
     ) -> None:
         """Insert an audit log entry."""
         try:
-            await self.storage.insert_audit_entry({
-                "id": uuid.uuid4().hex,
-                "operation": operation,
-                "agent_id": agent_id,
-                "fact_id": fact_id,
-                "conflict_id": conflict_id,
-                "extra": extra,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+            await self.storage.insert_audit_entry(
+                {
+                    "id": uuid.uuid4().hex,
+                    "operation": operation,
+                    "agent_id": agent_id,
+                    "fact_id": fact_id,
+                    "conflict_id": conflict_id,
+                    "extra": extra,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
         except Exception:
             logger.warning("Audit log insert failed for operation '%s'", operation)
 
