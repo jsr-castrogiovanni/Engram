@@ -1297,6 +1297,8 @@ This project uses Engram for team memory. Before starting work on any task:
     click.echo("  1. Restart your IDE")
     click.echo("  2. Run: engram verify")
     click.echo("  3. Start working with your team!\n")
+
+
 # ── engram completion ─────────────────────────────────────────────────
 
 _SHELL_CONFIGS = {
