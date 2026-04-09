@@ -30,3 +30,27 @@ def test_clean_content_passes():
 
 def test_clean_technical_content():
     assert scan_for_secrets("PostgreSQL 15.2 uses port 5432 with max_connections=200") is None
+
+
+def test_detects_email():
+    assert scan_for_secrets("contact john.smith@company.com for access") is not None
+
+
+def test_detects_us_phone():
+    assert scan_for_secrets("call us at (555) 123-4567 for support") is not None
+
+
+def test_detects_ssn():
+    assert scan_for_secrets("user authenticated with SSN 123-45-6789") is not None
+
+
+def test_detects_credit_card():
+    assert scan_for_secrets("card number is 4532-0151-1283-0366 for billing") is not None
+
+
+def test_rejects_invalid_credit_card_luhn():
+    assert scan_for_secrets("card: 1234-5678-9012-3456") is None
+
+
+def test_accepts_valid_credit_card_luhn():
+    assert scan_for_secrets("card: 5425-2334-3010-9903") is not None
