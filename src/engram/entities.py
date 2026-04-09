@@ -6,7 +6,6 @@ Regex pass only for v0.1 (NER model is a future addition).
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 

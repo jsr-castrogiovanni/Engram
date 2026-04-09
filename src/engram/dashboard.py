@@ -8,16 +8,15 @@ point-in-time, expiring facts.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from engram.engine import EngramEngine
+    pass
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import HTMLResponse, Response
 from starlette.routing import Route
 
 from engram.storage import Storage

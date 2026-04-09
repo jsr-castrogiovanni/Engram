@@ -104,7 +104,7 @@ async def engram_status() -> dict[str, Any]:
 
     Returns: {status, next_prompt?, engram_id?, mode?}
     """
-    from engram.workspace import is_configured, is_team_mode, read_workspace, WORKSPACE_PATH
+    from engram.workspace import read_workspace, WORKSPACE_PATH
 
     ws = read_workspace()
 
@@ -418,7 +418,6 @@ async def engram_reset_invite_key(
         }
 
     import time
-    from datetime import timezone
 
     # Revoke all existing invite keys and bump the generation counter
     await _storage.revoke_all_invite_keys(ws.engram_id)

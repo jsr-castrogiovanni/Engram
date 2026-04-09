@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import platform as _platform
 import sys
 from pathlib import Path
 
@@ -35,8 +36,6 @@ def main() -> None:
 # Comprehensive list covering all known MCP-compatible IDEs, editors, CLI
 # tools, and desktop apps that store their config in a discoverable file.
 # Entries are grouped by category for readability.
-
-import platform as _platform
 
 
 def _xdg_config() -> Path:
@@ -654,7 +653,7 @@ async def _serve(
             from engram.dashboard import build_dashboard_routes
             from engram.federation import build_federation_routes
             import uvicorn
-            from starlette.routing import Mount, Route
+            from starlette.routing import Mount
 
             dashboard_routes = build_dashboard_routes(storage)
             federation_routes = build_federation_routes(storage)
@@ -763,10 +762,10 @@ def verify(verbose: bool) -> None:
     # Check 1: workspace.json exists and is valid JSON
     click.echo("\n[1/4] Checking workspace configuration...")
     if not WORKSPACE_PATH.exists():
-        click.echo(f"  ✗ ~/.engram/workspace.json not found")
-        click.echo(f"    → Run: engram init   (or: engram join <key>)")
+        click.echo("  ✗ ~/.engram/workspace.json not found")
+        click.echo("    → Run: engram init   (or: engram join <key>)")
         click.echo(
-            f"    → Docs: https://github.com/Agentscreator/Engram/blob/main/docs/QUICKSTART.md"
+            "    → Docs: https://github.com/Agentscreator/Engram/blob/main/docs/QUICKSTART.md"
         )
         all_passed = False
     else:
@@ -781,7 +780,7 @@ def verify(verbose: bool) -> None:
                 click.echo(f"    - anonymous_mode: {ws.anonymous_mode if ws else 'N/A'}")
         except json.JSONDecodeError as e:
             click.echo(f"  ✗ workspace.json is invalid JSON: {e}")
-            click.echo(f"    → Delete and re-run: rm ~/.engram/workspace.json && engram init")
+            click.echo("    → Delete and re-run: rm ~/.engram/workspace.json && engram init")
             all_passed = False
 
     # Check 2: Backend is reachable (team mode only)
@@ -805,15 +804,15 @@ def verify(verbose: bool) -> None:
                     all_passed = False
         except urllib.error.URLError as e:
             # Non-critical: backend might not have /health endpoint
-            click.echo(f"  ⚠ Could not reach health endpoint (non-critical)")
+            click.echo("  ⚠ Could not reach health endpoint (non-critical)")
             if verbose:
                 click.echo(f"    - URL: {mcp_url}")
                 click.echo(f"    - Error: {e.reason}")
-                click.echo(f"    - Note: Backend connectivity will be verified by your IDE")
+                click.echo("    - Note: Backend connectivity will be verified by your IDE")
         except Exception as e:
             click.echo(f"  ⚠ Could not verify backend ({type(e).__name__}: {e})")
             if verbose:
-                click.echo(f"    - This is normal if you're offline or the backend is busy")
+                click.echo("    - This is normal if you're offline or the backend is busy")
     else:
         click.echo("  ○ Team mode not configured (local SQLite mode)")
         if verbose:
@@ -856,11 +855,11 @@ def verify(verbose: bool) -> None:
                 click.echo(f"    - ✓ {client_name}")
     else:
         click.echo("  ✗ Engram not found in any IDE MCP config")
-        click.echo(f"    → Run: engram install")
+        click.echo("    → Run: engram install")
         all_passed = False
 
     if missing and verbose:
-        click.echo(f"\n  Other detected IDEs (Engram not configured):")
+        click.echo("\n  Other detected IDEs (Engram not configured):")
         for client_name in missing[:5]:  # Limit verbose output
             click.echo(f"    - ○ {client_name}")
         if len(missing) > 5:
@@ -885,12 +884,12 @@ def verify(verbose: bool) -> None:
             break
 
     if not found_model:
-        click.echo(f"  ⚠ NLI model not cached (will download on first conflict detection)")
+        click.echo("  ⚠ NLI model not cached (will download on first conflict detection)")
         if verbose:
-            click.echo(f"    - Model: cross-encoder/nli-MiniLM2-L6-H768")
-            click.echo(f"    - Will be downloaded automatically when needed")
+            click.echo("    - Model: cross-encoder/nli-MiniLM2-L6-H768")
+            click.echo("    - Will be downloaded automatically when needed")
             click.echo(
-                f"    - This is optional - Engram works without it (Tier 1 detection disabled)"
+                "    - This is optional - Engram works without it (Tier 1 detection disabled)"
             )
 
     # Summary
@@ -968,12 +967,10 @@ def reembed(model: str | None, batch_size: int, dry_run: bool) -> None:
         from engram.postgres_storage import PostgresStorage
 
         storage = PostgresStorage(db_url=db_url, workspace_id=workspace_id, schema=schema)
-        mode = "team"
     else:
         from engram.storage import SQLiteStorage, DEFAULT_DB_PATH
 
         storage = SQLiteStorage(db_path=str(DEFAULT_DB_PATH))
-        mode = "local"
 
     async def run_reembed():
         await storage.connect()
@@ -1004,7 +1001,6 @@ def reembed(model: str | None, batch_size: int, dry_run: bool) -> None:
                     continue
 
                 # Count total
-                import asyncio
 
                 all_facts = await storage.get_facts_by_embedding_model(
                     target, limit=100000, offset=0

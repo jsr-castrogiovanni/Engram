@@ -1053,9 +1053,6 @@ class PostgresStorage(BaseStorage):
             )
         return _row_to_dict(row) if row else None
 
-    async def consume_invite_key(self, key_hash: str) -> None:
-        async with self.acquire() as conn:
-            await conn.execute(
     async def consume_invite_key(self, key_hash: str) -> dict | None:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(

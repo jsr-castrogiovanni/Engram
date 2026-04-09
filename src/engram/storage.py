@@ -8,7 +8,6 @@ The Storage alias keeps existing imports working.
 
 from __future__ import annotations
 
-import json
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 
 import numpy as np
 import pytest
 
 from engram.engine import EngramEngine
-from engram.storage import Storage
 
 
 @pytest.mark.asyncio

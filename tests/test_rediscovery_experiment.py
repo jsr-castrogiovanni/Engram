@@ -46,7 +46,6 @@ class AgentSimulator:
         Returns:
             Discovery metadata including time spent
         """
-        start = time.time()
         await asyncio.sleep(0.001)  # Simulate work
         
         discovery = {

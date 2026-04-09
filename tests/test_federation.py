@@ -154,7 +154,7 @@ def test_federation_missing_after_param():
 
 def test_federation_invalid_limit_string():
     """Non-numeric limit must not crash (500) — must fall back to default 1000."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import AsyncMock
     storage = MagicMock()
     storage.get_facts_since = AsyncMock(return_value=[])
     routes = build_federation_routes(storage)

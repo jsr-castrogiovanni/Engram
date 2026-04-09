@@ -4,7 +4,6 @@ Posts a comment and adds a label if a likely duplicate is found.
 """
 
 import os
-import sys
 import numpy as np
 from openai import OpenAI
 from github import Github

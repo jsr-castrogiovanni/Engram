@@ -261,7 +261,7 @@ async def _auth_workspace(request: Request) -> str | None:
         return None
     invite_key = auth[7:]
     try:
-        payload = _decode_invite_key(invite_key)
+        _decode_invite_key(invite_key)
     except ValueError:
         return None
     key_hash = _invite_key_hash(invite_key)
@@ -886,7 +886,6 @@ async def _handle_message(msg: dict, workspace_id: str | None) -> dict | None:
     method = msg.get("method", "")
     params = msg.get("params") or {}
     msg_id = msg.get("id")
-    is_notification = msg_id is None
 
     try:
         if method == "initialize":

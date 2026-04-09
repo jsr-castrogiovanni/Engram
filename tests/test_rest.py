@@ -6,13 +6,10 @@ rather than propagating the request to the engine and returning a 500.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from starlette.testclient import TestClient
 from starlette.applications import Starlette
-from starlette.routing import Route
 
 from engram.rest import build_rest_routes
 
